@@ -65,28 +65,13 @@ class _MorphSwitcherState extends State<MorphSwitcher>
   @override
   Widget build(BuildContext context) {
     final outgoing = _outgoing;
-    // 旧页面放在上面：飞出去的元素才不会被新页面里正在淡入的块盖住。
+    // 新页面放在上面：飞进来的元素是新的内容，得压住旧页面上正在淡出的东西。
     return IgnorePointer(
       ignoring: _session.running,
       child: Stack(
         key: _session.rootKey,
         fit: StackFit.expand,
         children: [
-          Positioned.fill(
-            key: widget.child.key ?? ObjectKey(widget.child),
-            child: _MorphScope(
-              session: _session,
-              slot: _session.inSlot,
-              child: AnimatedBuilder(
-                animation: _controller,
-                child: widget.child,
-                builder: (context, child) => Opacity(
-                  opacity: _session.pageOpacity(outgoing: false),
-                  child: child,
-                ),
-              ),
-            ),
-          ),
           if (outgoing != null)
             Positioned.fill(
               key: outgoing.key ?? ObjectKey(outgoing),
@@ -103,6 +88,21 @@ class _MorphSwitcherState extends State<MorphSwitcher>
                 ),
               ),
             ),
+          Positioned.fill(
+            key: widget.child.key ?? ObjectKey(widget.child),
+            child: _MorphScope(
+              session: _session,
+              slot: _session.inSlot,
+              child: AnimatedBuilder(
+                animation: _controller,
+                child: widget.child,
+                builder: (context, child) => Opacity(
+                  opacity: _session.pageOpacity(outgoing: false),
+                  child: child,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -176,26 +176,39 @@ class _MorphSession {
     }
   }
 
-  /// 旧块：飞向同名的新块，或者自己淡出。
+  /// 这一对块值不值得飞过去：标签要对上，尺寸也不能差太多。
+  bool _canFly(String tag) {
+    if (!_paired.contains(tag)) return false;
+    final a = _rectOf(keys[outSlot]![tag]);
+    final b = _rectOf(keys[inSlot]![tag]);
+    if (a == null || b == null) return false;
+    if (a.width <= 0 || a.height <= 0 || b.width <= 0 || b.height <= 0) {
+      return false;
+    }
+    return _similar(a, b);
+  }
+
+  /// 旧块：对接上的立刻让位——新块已经顶在同一个位置上了。
   Widget decorateOutgoing(String tag, Widget child) {
     if (_phase == _Phase.idle || _phase == _Phase.pending) return child;
     final t = _t;
-    if (!_paired.contains(tag)) {
-      return Opacity(opacity: 1 - _ramp(t, 0, 0.42), child: child);
+    if (_canFly(tag)) {
+      return Opacity(opacity: 1 - _ramp(t, 0, 0.1), child: child);
     }
-    final own = _rectOf(keys[outSlot]![tag]);
-    final target = _rectOf(keys[inSlot]![tag]);
-    if (own == null ||
-        target == null ||
-        own.width <= 0 ||
-        own.height <= 0 ||
-        target.width <= 0 ||
-        target.height <= 0 ||
-        // 尺寸差太多的两块硬飞过去只会糊成一团，不如各自淡掉。
-        !_similar(own, target)) {
-      return Opacity(opacity: 1 - _ramp(t, 0, 0.5), child: child);
+    return Opacity(opacity: 1 - _ramp(t, 0, 0.42), child: child);
+  }
+
+  /// 新块：从旧块的位置、尺寸飞回自己的位置，途中一直显示新的内容。
+  Widget decorateIncoming(String tag, Widget child) {
+    if (_phase == _Phase.idle || _phase == _Phase.pending) return child;
+    final t = _t;
+    if (_phase == _Phase.crossFade) return child;
+    final own = _rectOf(keys[inSlot]![tag]);
+    final from = _canFly(tag) ? _rectOf(keys[outSlot]![tag]) : null;
+    if (own == null || from == null) {
+      return Opacity(opacity: _ramp(t, 0.32, 0.86), child: child);
     }
-    final rect = Rect.lerp(own, target, t)!;
+    final rect = Rect.lerp(from, own, t)!;
     final matrix = Matrix4.identity()
       ..translateByDouble(rect.left - own.left, rect.top - own.top, 0, 1)
       ..scaleByDouble(
@@ -204,21 +217,7 @@ class _MorphSession {
         1,
         1,
       );
-    return Opacity(
-      opacity: 1 - _ramp(t, 0.88, 1),
-      child: Transform(transform: matrix, child: child),
-    );
-  }
-
-  /// 新块：认得出对应关系的，等旧块飞到站再露脸；认不出的自己淡入。
-  Widget decorateIncoming(String tag, Widget child) {
-    if (_phase == _Phase.idle || _phase == _Phase.pending) return child;
-    final t = _t;
-    if (_phase == _Phase.crossFade) return child;
-    if (!_paired.contains(tag)) {
-      return Opacity(opacity: _ramp(t, 0.3, 0.82), child: child);
-    }
-    return Opacity(opacity: _ramp(t, 0.88, 1), child: child);
+    return Transform(transform: matrix, child: child);
   }
 
   Rect? _rectOf(GlobalKey? key) {

@@ -63,7 +63,7 @@ class EmptyDesk extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 760),
             child: MorphGroup(
               id: 'desk',
-              tags: const ['top', 'title', 'lede', 'main', 'recent', 'quote'],
+              tags: const ['top', 'desk-title', 'desk-lede', 'main', 'recent', 'quote'],
               children: [
                 Reveal(
                   child: Row(
@@ -100,14 +100,17 @@ class EmptyDesk extends StatelessWidget {
                 const SizedBox(height: 52),
                 Reveal(
                   delay: const Duration(milliseconds: 60),
-                  child: Text(
-                    '今天，写点什么？',
-                    style: TextStyle(
-                      fontFamily: 'WenKai',
-                      fontSize: 43,
-                      height: 1.25,
-                      letterSpacing: 2,
-                      color: c.ink,
+                  child: MorphBlock(
+                    tag: 'title',
+                    child: Text(
+                      '今天，写点什么？',
+                      style: TextStyle(
+                        fontFamily: 'WenKai',
+                        fontSize: 43,
+                        height: 1.25,
+                        letterSpacing: 2,
+                        color: c.ink,
+                      ),
                     ),
                   ),
                 ),

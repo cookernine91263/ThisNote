@@ -45,15 +45,18 @@ class SettingsPage extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 820),
           child: MorphGroup(
             id: 'settings',
-            tags: const ['title', 'lede', 'main', 'main-2'],
+            tags: const ['settings-title', 'settings-lede', 'main', 'main-2'],
             children: [
-              Text(
-                '设置',
-                style: TextStyle(
-                  fontFamily: 'WenKai',
-                  fontSize: 30,
-                  letterSpacing: 2,
-                  color: c.ink,
+              MorphBlock(
+                tag: 'title',
+                child: Text(
+                  '设置',
+                  style: TextStyle(
+                    fontFamily: 'WenKai',
+                    fontSize: 30,
+                    letterSpacing: 2,
+                    color: c.ink,
+                  ),
                 ),
               ),
               const SizedBox(height: 3),

@@ -28,7 +28,7 @@ class StatsPage extends StatelessWidget {
     final weekWords = days.fold(0, (s, d) => s + d.words);
     final content = MorphGroup(
       id: 'stats',
-      tags: const ['title', 'main'],
+      tags: const ['stats-title', 'main'],
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -36,13 +36,16 @@ class StatsPage extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '写作统计',
-                  style: TextStyle(
-                    fontFamily: 'WenKai',
-                    fontSize: 30,
-                    letterSpacing: 2,
-                    color: c.ink,
+                MorphBlock(
+                  tag: 'title',
+                  child: Text(
+                    '写作统计',
+                    style: TextStyle(
+                      fontFamily: 'WenKai',
+                      fontSize: 30,
+                      letterSpacing: 2,
+                      color: c.ink,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 3),
