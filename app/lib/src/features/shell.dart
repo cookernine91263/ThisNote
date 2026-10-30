@@ -445,11 +445,11 @@ class _Rail extends StatelessWidget {
             active: false,
             onTap: () {},
             onTapPosition: (origin) {
-              final next = switch (state.settings.themeMode) {
-                ThemeMode.system => ThemeMode.light,
-                ThemeMode.light => ThemeMode.dark,
-                ThemeMode.dark => ThemeMode.system,
-              };
+              // 外观按钮只在浅色和深色之间来回；正在跟随系统时，
+              // 按当下实际的亮暗取反，点一下就是“换个明暗”。
+              final next = Theme.of(context).brightness == Brightness.dark
+                  ? ThemeMode.light
+                  : ThemeMode.dark;
               ThemeReveal.reveal(
                 context: context,
                 globalOrigin: origin,

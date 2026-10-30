@@ -5,12 +5,15 @@ import 'package:provider/provider.dart';
 
 import '../core/motion.dart';
 import '../core/theme.dart';
+import '../core/theme_reveal.dart';
 import '../core/ui.dart';
 import '../data/models.dart';
 import '../state/app_state.dart';
 
-Future<void> showCommandPalette(BuildContext context) {
-  return showGeneralDialog<void>(
+Future<void> showCommandPalette(BuildContext context) async {
+  // 主题类命令不在面板里当场执行：先等面板彻底退场，
+  // 再由这里接手做圆孔揭示，截图里才不会有残留的面板。
+  final request = await showGeneralDialog<_ThemeRequest>(
     context: context,
     barrierDismissible: true,
     barrierLabel: '命令面板',
@@ -28,6 +31,31 @@ Future<void> showCommandPalette(BuildContext context) {
       );
     },
   );
+  if (request == null || !context.mounted) return;
+  // 已经是这个外观了：不演那段看不见的扩散，也不挡输入。
+  if (context.read<AppState>().settings.themeMode == request.mode) return;
+  await WidgetsBinding.instance.endOfFrame;
+  if (!context.mounted) return;
+  await ThemeReveal.reveal(
+    context: context,
+    globalOrigin: request.origin ?? _centerOf(context),
+    apply: () => context.read<AppState>().setThemeMode(request.mode),
+  );
+}
+
+/// 没有行坐标时的兜底：从当前这块区域中心扩散。
+Offset _centerOf(BuildContext context) {
+  final box = context.findRenderObject();
+  if (box is RenderBox && box.hasSize) {
+    return box.localToGlobal(box.size.center(Offset.zero));
+  }
+  return Offset.zero;
+}
+
+class _ThemeRequest {
+  const _ThemeRequest(this.mode, this.origin);
+  final ThemeMode mode;
+  final Offset? origin;
 }
 
 class _CommandDialog extends StatefulWidget {
@@ -130,19 +158,19 @@ class _CommandDialogState extends State<_CommandDialog> {
           icon: LucideIcons.sun,
           label: '外观：浅色',
           group: '操作',
-          action: () => state.setThemeMode(ThemeMode.light),
+          themeMode: ThemeMode.light,
         ),
         _Command(
           icon: LucideIcons.moon,
           label: '外观：深色',
           group: '操作',
-          action: () => state.setThemeMode(ThemeMode.dark),
+          themeMode: ThemeMode.dark,
         ),
         _Command(
           icon: LucideIcons.sunMoon,
           label: '外观：跟随系统',
           group: '操作',
-          action: () => state.setThemeMode(ThemeMode.system),
+          themeMode: ThemeMode.system,
         ),
         _Command(
           icon: LucideIcons.lock,
@@ -203,9 +231,26 @@ class _CommandDialogState extends State<_CommandDialog> {
     }).toList();
   }
 
+  /// 每行一个 key，用来取被选中那一行的位置——圆孔从那里扩散。
+  final Map<_Command, GlobalKey> _rowKeys = {};
+
+  Offset? _rowOrigin(_Command command) {
+    final box = _rowKeys[command]?.currentContext?.findRenderObject();
+    if (box is RenderBox && box.hasSize) {
+      return box.localToGlobal(box.size.center(Offset.zero));
+    }
+    return null;
+  }
+
   void _run(_Command command) {
+    final mode = command.themeMode;
+    if (mode != null) {
+      // 外观类命令交给 showCommandPalette：等面板退场后再做揭示。
+      Navigator.of(context).pop(_ThemeRequest(mode, _rowOrigin(command)));
+      return;
+    }
     Navigator.of(context).pop();
-    WidgetsBinding.instance.addPostFrameCallback((_) => command.action());
+    WidgetsBinding.instance.addPostFrameCallback((_) => command.action?.call());
   }
 
   @override
@@ -234,6 +279,7 @@ class _CommandDialogState extends State<_CommandDialog> {
       for (final command in entry.value) {
         final index = flatIndex++;
         rows.add(_CommandRow(
+          key: _rowKeys.putIfAbsent(command, () => GlobalKey()),
           command: command,
           selected: index == _selected,
           onTap: () => _run(command),
@@ -386,17 +432,23 @@ class _Command {
     required this.icon,
     required this.label,
     required this.group,
-    required this.action,
+    this.action,
+    this.themeMode,
     this.hint,
     this.shortcut,
-  });
+  }) : assert(action != null || themeMode != null, '命令总得做点什么');
 
   final IconData icon;
   final String label;
   final String group;
   final String? hint;
   final String? shortcut;
-  final FutureOrValue action;
+
+  /// 普通命令：面板关掉之后直接执行。
+  final FutureOrValue? action;
+
+  /// 外观命令：面板关掉之后再走圆孔揭示。
+  final ThemeMode? themeMode;
 }
 
 typedef FutureOrValue = void Function();
@@ -407,6 +459,7 @@ class _CommandRow extends StatelessWidget {
     required this.selected,
     required this.onTap,
     required this.onHover,
+    super.key,
   });
 
   final _Command command;
