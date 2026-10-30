@@ -13,6 +13,7 @@ import '../services/webdav_service.dart';
 
 import '../core/format.dart';
 import '../core/motion.dart';
+import '../core/motion_choice.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../state/app_state.dart';
@@ -206,6 +207,41 @@ class SettingsPage extends StatelessWidget {
                     description: '在背景上铺一层极淡的纸纹',
                     value: s.paperTexture,
                     onChanged: (v) => state.updateSettings((x) => x.paperTexture = v),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(height: 0.8, color: c.line),
+                  const SizedBox(height: 12),
+                  _RowLabel(label: '页面切换'),
+                  const SizedBox(height: 4),
+                  Text(
+                    '两种手感，随时可换。',
+                    style: TextStyle(
+                      fontFamily: 'NotoSansSC',
+                      fontSize: 9,
+                      color: c.inkMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: MotionChoice(
+                          value: 'slide',
+                          compact: true,
+                          selected: s.motionStyle == 'slide',
+                          onTap: () => state.setMotionStyle('slide'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: MotionChoice(
+                          value: 'morph',
+                          compact: true,
+                          selected: s.motionStyle == 'morph',
+                          onTap: () => state.setMotionStyle('morph'),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

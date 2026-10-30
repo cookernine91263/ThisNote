@@ -92,6 +92,7 @@ class _AppShellState extends State<AppShell> with WindowListener {
     final showList =
         const ['today', 'all', 'tags', 'trash', 'search'].contains(state.view);
     final main = _buildMain(state, zen);
+    final morph = state.settings.motionStyle == 'morph';
 
     return Focus(
       autofocus: true,
@@ -120,11 +121,40 @@ class _AppShellState extends State<AppShell> with WindowListener {
                   Expanded(
                     child: ClipRect(
                       child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 280),
-                        reverseDuration: const Duration(milliseconds: 220),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
+                        duration: Duration(milliseconds: morph ? 430 : 280),
+                        reverseDuration:
+                            Duration(milliseconds: morph ? 360 : 220),
+                        switchInCurve: morph
+                            ? Curves.easeInOutCubic
+                            : Curves.easeOutCubic,
+                        switchOutCurve: morph
+                            ? Curves.easeInOutCubic
+                            : Curves.easeInCubic,
                         transitionBuilder: (child, animation) {
+                          if (morph) {
+                            final curve = CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeInOutCubic,
+                              reverseCurve: Curves.easeInOutCubic,
+                            );
+                            return FadeTransition(
+                              opacity: curve,
+                              child: ScaleTransition(
+                                alignment: Alignment.topCenter,
+                                scale: Tween<double>(
+                                  begin: 0.968,
+                                  end: 1,
+                                ).animate(curve),
+                                child: SlideTransition(
+                                  position: Tween<Offset>(
+                                    begin: const Offset(0, 0.012),
+                                    end: Offset.zero,
+                                  ).animate(curve),
+                                  child: child,
+                                ),
+                              ),
+                            );
+                          }
                           final slide = Tween<Offset>(
                             begin: const Offset(0.018, 0),
                             end: Offset.zero,
