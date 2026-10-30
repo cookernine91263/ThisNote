@@ -6,7 +6,6 @@ import 'package:provider/provider.dart';
 
 import '../core/format.dart';
 import '../core/motion.dart';
-import '../core/morph.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../data/models.dart';
@@ -26,9 +25,8 @@ class StatsPage extends StatelessWidget {
         ? 0
         : (state.totalWords / state.activeNotes.length).round();
     final weekWords = days.fold(0, (s, d) => s + d.words);
-    final content = MorphGroup(
-      id: 'stats',
-      tags: const ['stats-title', 'main'],
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -36,16 +34,13 @@ class StatsPage extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                MorphBlock(
-                  tag: 'title',
-                  child: Text(
-                    '写作统计',
-                    style: TextStyle(
-                      fontFamily: 'WenKai',
-                      fontSize: 30,
-                      letterSpacing: 2,
-                      color: c.ink,
-                    ),
+                Text(
+                  '写作统计',
+                  style: TextStyle(
+                    fontFamily: 'WenKai',
+                    fontSize: 30,
+                    letterSpacing: 2,
+                    color: c.ink,
                   ),
                 ),
                 const SizedBox(height: 3),

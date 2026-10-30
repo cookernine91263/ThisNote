@@ -3,7 +3,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../core/motion.dart';
-import '../core/motion_choice.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../state/app_state.dart';
@@ -58,7 +57,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
-    final state = context.watch<AppState>();
     final page = _pages[_index];
     return Scaffold(
       backgroundColor: c.paper,
@@ -146,30 +144,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           ),
                           if (_index == 1) ...[
                             const SizedBox(height: 22),
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 470),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: MotionChoice(
-                                      value: 'slide',
-                                      selected:
-                                          state.settings.motionStyle == 'slide',
-                                      onTap: () => state.setMotionStyle('slide'),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: MotionChoice(
-                                      value: 'morph',
-                                      selected:
-                                          state.settings.motionStyle == 'morph',
-                                      onTap: () => state.setMotionStyle('morph'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
                           ],
                         ],
                       ),

@@ -8,14 +8,12 @@ import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../core/morph.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/webdav_service.dart';
 
 import '../core/format.dart';
 import '../core/motion.dart';
-import '../core/motion_choice.dart';
 import '../core/theme.dart';
 import '../core/theme_reveal.dart';
 import '../core/ui.dart';
@@ -43,20 +41,16 @@ class SettingsPage extends StatelessWidget {
         child: Center(
           child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 820),
-          child: MorphGroup(
-            id: 'settings',
-            tags: const ['settings-title', 'settings-lede', 'main', 'main-2'],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              MorphBlock(
-                tag: 'title',
-                child: Text(
-                  '设置',
-                  style: TextStyle(
-                    fontFamily: 'WenKai',
-                    fontSize: 30,
-                    letterSpacing: 2,
-                    color: c.ink,
-                  ),
+              Text(
+                '设置',
+                style: TextStyle(
+                  fontFamily: 'WenKai',
+                  fontSize: 30,
+                  letterSpacing: 2,
+                  color: c.ink,
                 ),
               ),
               const SizedBox(height: 3),
@@ -226,40 +220,6 @@ class SettingsPage extends StatelessWidget {
                     onChanged: (v) => state.updateSettings((x) => x.paperTexture = v),
                   ),
                   const SizedBox(height: 12),
-                  Container(height: 0.8, color: c.line),
-                  const SizedBox(height: 12),
-                  _RowLabel(label: '页面切换'),
-                  const SizedBox(height: 4),
-                  Text(
-                    '两种手感，随时可换。',
-                    style: TextStyle(
-                      fontFamily: 'NotoSansSC',
-                      fontSize: 9,
-                      color: c.inkMuted,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: MotionChoice(
-                          value: 'slide',
-                          compact: true,
-                          selected: s.motionStyle == 'slide',
-                          onTap: () => state.setMotionStyle('slide'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: MotionChoice(
-                          value: 'morph',
-                          compact: true,
-                          selected: s.motionStyle == 'morph',
-                          onTap: () => state.setMotionStyle('morph'),
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
               ),
               const SizedBox(height: 12),

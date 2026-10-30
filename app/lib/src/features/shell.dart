@@ -6,7 +6,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 
-import '../core/morph.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
 import '../core/theme_reveal.dart';
@@ -95,7 +94,6 @@ class _AppShellState extends State<AppShell> with WindowListener {
     final showList =
         const ['today', 'all', 'tags', 'trash', 'search'].contains(state.view);
     final main = _buildMain(state, zen);
-    final morph = state.settings.motionStyle == 'morph';
 
     return Focus(
       autofocus: true,
@@ -119,54 +117,39 @@ class _AppShellState extends State<AppShell> with WindowListener {
                   _AnimatedWidth(
                     visible: !zen && showList,
                     width: 324,
-                    duration: morph
-                        ? const Duration(milliseconds: 430)
-                        : Motion.base,
-                    curve: morph ? Curves.easeInOutCubic : Motion.spring,
                     child: const NoteListPanel(),
                   ),
                   Expanded(
                     child: ColoredBox(
                       color: AppPalette.of(context).paper,
                       child: ClipRect(
-                        child: morph
-                            ? MorphSwitcher(
-                                duration: const Duration(milliseconds: 560),
-                                child: KeyedSubtree(
-                                  key: ValueKey(
-                                    '${state.view}-${state.current?.id ?? 'desk'}',
-                                  ),
-                                  child: main,
-                                ),
-                              )
-                            : AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 280),
-                                reverseDuration:
-                                    const Duration(milliseconds: 220),
-                                switchInCurve: Curves.easeOutCubic,
-                                switchOutCurve: Curves.easeInCubic,
-                                layoutBuilder: (current, previous) =>
-                                    current ?? const SizedBox.shrink(),
-                                transitionBuilder: (child, animation) {
-                                  final slide = Tween<Offset>(
-                                    begin: const Offset(0.018, 0),
-                                    end: Offset.zero,
-                                  ).animate(animation);
-                                  return FadeTransition(
-                                    opacity: animation,
-                                    child: SlideTransition(
-                                      position: slide,
-                                      child: child,
-                                    ),
-                                  );
-                                },
-                                child: KeyedSubtree(
-                                  key: ValueKey(
-                                    '${state.view}-${state.current?.id ?? 'desk'}',
-                                  ),
-                                  child: main,
-                                ),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 280),
+                          reverseDuration: const Duration(milliseconds: 220),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          layoutBuilder: (current, previous) =>
+                              current ?? const SizedBox.shrink(),
+                          transitionBuilder: (child, animation) {
+                            final slide = Tween<Offset>(
+                              begin: const Offset(0.018, 0),
+                              end: Offset.zero,
+                            ).animate(animation);
+                            return FadeTransition(
+                              opacity: animation,
+                              child: SlideTransition(
+                                position: slide,
+                                child: child,
                               ),
+                            );
+                          },
+                          child: KeyedSubtree(
+                            key: ValueKey(
+                              '${state.view}-${state.current?.id ?? 'desk'}',
+                            ),
+                            child: main,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -315,21 +298,17 @@ class _AnimatedWidth extends StatelessWidget {
     required this.visible,
     required this.width,
     required this.child,
-    this.duration = Motion.base,
-    this.curve = Motion.spring,
   });
   final bool visible;
   final double width;
   final Widget child;
-  final Duration duration;
-  final Curve curve;
 
   @override
   Widget build(BuildContext context) {
     return ClipRect(
       child: AnimatedContainer(
-        duration: duration,
-        curve: curve,
+        duration: Motion.base,
+        curve: Motion.spring,
         width: visible ? width : 0,
         child: OverflowBox(
           alignment: Alignment.centerLeft,

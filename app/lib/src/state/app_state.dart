@@ -613,9 +613,6 @@ class AppState extends ChangeNotifier {
 
   Future<void> setAccent(String accent) => updateSettings((s) => s.accent = accent);
 
-  Future<void> setMotionStyle(String style) =>
-      updateSettings((s) => s.motionStyle = style);
-
   Future<void> setDailyGoal(int goal) => updateSettings((s) => s.dailyGoal = goal);
 
   Future<void> saveColor(String hex) async {

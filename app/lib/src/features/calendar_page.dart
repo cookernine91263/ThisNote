@@ -7,7 +7,6 @@ import 'package:provider/provider.dart';
 import '../core/format.dart';
 import '../core/icons.dart';
 import '../core/motion.dart';
-import '../core/morph.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../data/models.dart';
@@ -147,9 +146,8 @@ class _CalendarPageState extends State<CalendarPage> {
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1120),
-          child: MorphGroup(
-            id: 'calendar',
-            tags: const ['title', 'main'],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               header,
               const SizedBox(height: 22),

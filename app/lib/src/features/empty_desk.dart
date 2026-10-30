@@ -7,7 +7,6 @@ import 'package:provider/provider.dart';
 import '../core/format.dart';
 import '../core/icons.dart';
 import '../core/motion.dart';
-import '../core/morph.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../data/models.dart';
@@ -61,9 +60,8 @@ class EmptyDesk extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(56, 46, 56, 60),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 760),
-            child: MorphGroup(
-              id: 'desk',
-              tags: const ['top', 'desk-title', 'desk-lede', 'main', 'recent', 'quote'],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Reveal(
                   child: Row(
@@ -100,17 +98,14 @@ class EmptyDesk extends StatelessWidget {
                 const SizedBox(height: 52),
                 Reveal(
                   delay: const Duration(milliseconds: 60),
-                  child: MorphBlock(
-                    tag: 'title',
-                    child: Text(
-                      '今天，写点什么？',
-                      style: TextStyle(
-                        fontFamily: 'WenKai',
-                        fontSize: 43,
-                        height: 1.25,
-                        letterSpacing: 2,
-                        color: c.ink,
-                      ),
+                  child: Text(
+                    '今天，写点什么？',
+                    style: TextStyle(
+                      fontFamily: 'WenKai',
+                      fontSize: 43,
+                      height: 1.25,
+                      letterSpacing: 2,
+                      color: c.ink,
                     ),
                   ),
                 ),
