@@ -6,11 +6,11 @@
 
 ### Noto Sans SC
 
-- 用途：界面与正文通用字体（Light / Regular / Bold / Oblique）
+- 用途：界面与正文通用字体（Light / Regular / Bold）
 - 来源：https://fonts.google.com/noto/specimen/Noto+Sans+SC
 - 许可证：SIL Open Font License 1.1
 - 许可证全文：`app/assets/fonts/OFL-NotoSansSC.txt`
-- 说明：Oblique 字面由项目脚本 `tools/fontprep.py` 基于 Noto Sans SC 生成，仅供本应用使用，未使用 Reserved Font Name 发布为新字体。
+
 
 ### LXGW WenKai / 霞鹜文楷
 

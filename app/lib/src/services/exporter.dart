@@ -214,9 +214,8 @@ class NoteExporter {
     _pdfLight = pw.Font.ttf(
       await rootBundle.load('assets/fonts/NotoSansSC-Light.ttf'),
     );
-    _pdfOblique = pw.Font.ttf(
-      await rootBundle.load('assets/fonts/NotoSansSC-Oblique.ttf'),
-    );
+    // 中文没有随字体分发的可靠斜体字面；导出时用常规字重保持版面稳定。
+    _pdfOblique = _pdfRegular;
     _pdfWenKai = pw.Font.ttf(
       await rootBundle.load('assets/fonts/LXGWWenKai-Regular.ttf'),
     );

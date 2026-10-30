@@ -59,9 +59,6 @@ flutter:
           weight: 400
         - asset: assets/fonts/NotoSansSC-Bold.ttf
           weight: 700
-    - family: NotoSansSC-Oblique
-      fonts:
-        - asset: assets/fonts/NotoSansSC-Oblique.ttf
     - family: NotoSansSCLight
       fonts:
         - asset: assets/fonts/NotoSansSC-Light.ttf

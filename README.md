@@ -97,7 +97,7 @@
 | 存储 | 本地 JSON 文件（原子写入）+ 每篇独立文件 + 历史快照目录；无数据库依赖 |
 | 导出 | `pdf`、`archive`（OOXML zip）、`xml`，自行构建 DOCX / PDF |
 | 桌面 | `window_manager` 无边框窗口、自绘标题栏 |
-| 字体 | Noto Sans SC（可变字体实例化为 Light/Regular/Bold + 程序生成的 Oblique）、LXGW WenKai |
+| 字体 | Noto Sans SC（可变字体实例化为 Light/Regular/Bold）、LXGW WenKai |
 | 图标 | Lucide Icons |
 | 构建 | Windows：MSVC 2022 + Windows 11 SDK；Android：JDK 17 + Android SDK 36 + Gradle 9.3.1 |
 

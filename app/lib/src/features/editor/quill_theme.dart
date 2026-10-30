@@ -109,10 +109,7 @@ DefaultStyles buildQuillStyles(
       null,
     ),
     bold: const TextStyle(fontWeight: FontWeight.w700),
-    italic: const TextStyle(
-      fontFamily: 'NotoSansSC-Oblique',
-      fontStyle: FontStyle.normal,
-    ),
+    italic: const TextStyle(fontStyle: FontStyle.italic),
     underline: TextStyle(
       decoration: TextDecoration.underline,
       decorationColor: c.inkMuted,

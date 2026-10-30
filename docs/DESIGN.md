@@ -76,6 +76,6 @@
 
 ## 字体
 
-- **Noto Sans SC**：SIL OFL 1.1；从可变字体实例化 Light 300 / Regular 400 / Bold 700，并用 fontTools 生成 12° 倾斜的 Oblique，解决中文没有真斜体的问题。
+- **Noto Sans SC**：SIL OFL 1.1；从可变字体实例化 Light 300 / Regular 400 / Bold 700，覆盖中英日，保持正文安静、清晰。
 - **LXGW WenKai**：SIL OFL 1.1；用于标题、字标与花字，覆盖中文、英文与日文假名。
 - 两者都完整覆盖中英日常用字符；导出 PDF 时嵌入字体。
