@@ -1,0 +1,495 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+
+import '../core/format.dart';
+
+enum NoteKind { diary, essay, note }
+
+extension NoteKindX on NoteKind {
+  String get key => switch (this) {
+        NoteKind.diary => 'diary',
+        NoteKind.essay => 'essay',
+        NoteKind.note => 'note',
+      };
+
+  String get label => switch (this) {
+        NoteKind.diary => '日记',
+        NoteKind.essay => '作文',
+        NoteKind.note => '随笔',
+      };
+
+  String get verb => switch (this) {
+        NoteKind.diary => '写日记',
+        NoteKind.essay => '写作文',
+        NoteKind.note => '写随笔',
+      };
+
+  static NoteKind fromKey(String? key) => switch (key) {
+        'diary' => NoteKind.diary,
+        'essay' => NoteKind.essay,
+        _ => NoteKind.note,
+      };
+}
+
+enum Mood { calm, glad, full, tired, low }
+
+extension MoodX on Mood {
+  int get score => index + 1;
+
+  String get label => switch (this) {
+        Mood.calm => '平静',
+        Mood.glad => '愉悦',
+        Mood.full => '充实',
+        Mood.tired => '疲惫',
+        Mood.low => '低落',
+      };
+
+  String get emoji => switch (this) {
+        Mood.calm => '◡',
+        Mood.glad => '⌣',
+        Mood.full => '✦',
+        Mood.tired => '﹏',
+        Mood.low => '︵',
+      };
+
+  Color get color => switch (this) {
+        Mood.calm => const Color(0xFF7C8B95),
+        Mood.glad => const Color(0xFFB08A4F),
+        Mood.full => const Color(0xFFB0573F),
+        Mood.tired => const Color(0xFF8C7F6B),
+        Mood.low => const Color(0xFF6C7A86),
+      };
+
+  static Mood? fromScore(int? score) {
+    if (score == null || score < 1 || score > Mood.values.length) return null;
+    return Mood.values[score - 1];
+  }
+}
+
+enum Weather { sunny, cloudy, overcast, rain, snow, wind }
+
+extension WeatherX on Weather {
+  String get key => name;
+
+  String get label => switch (this) {
+        Weather.sunny => '晴',
+        Weather.cloudy => '多云',
+        Weather.overcast => '阴',
+        Weather.rain => '雨',
+        Weather.snow => '雪',
+        Weather.wind => '风',
+      };
+
+  static Weather? fromKey(String? key) {
+    if (key == null) return null;
+    for (final w in Weather.values) {
+      if (w.key == key) return w;
+    }
+    return null;
+  }
+}
+
+class NoteMeta {
+  NoteMeta({
+    required this.id,
+    required this.title,
+    required this.text,
+    required this.kind,
+    required this.createdAt,
+    required this.updatedAt,
+    this.tags = const [],
+    this.mood,
+    this.weather,
+    this.pinned = false,
+    this.favorite = false,
+    this.deletedAt,
+    this.words = 0,
+    required this.day,
+  });
+
+  final String id;
+  String title;
+  String text;
+  NoteKind kind;
+  List<String> tags;
+  int? mood;
+  String? weather;
+  bool pinned;
+  bool favorite;
+  DateTime createdAt;
+  DateTime updatedAt;
+  DateTime? deletedAt;
+  int words;
+  String day;
+
+  String get excerpt => excerptOf(text);
+  bool get isTrashed => deletedAt != null;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'text': text,
+        'kind': kind.key,
+        'tags': tags,
+        'mood': mood,
+        'weather': weather,
+        'pinned': pinned,
+        'favorite': favorite,
+        'createdAt': createdAt.toIso8601String(),
+        'updatedAt': updatedAt.toIso8601String(),
+        'deletedAt': deletedAt?.toIso8601String(),
+        'words': words,
+        'day': day,
+      };
+
+  factory NoteMeta.fromJson(Map<String, dynamic> j) => NoteMeta(
+        id: j['id'] as String,
+        title: (j['title'] as String?) ?? '',
+        text: (j['text'] as String?) ?? '',
+        kind: NoteKindX.fromKey(j['kind'] as String?),
+        tags: (j['tags'] as List?)?.map((e) => e.toString()).toList() ?? [],
+        mood: j['mood'] as int?,
+        weather: j['weather'] as String?,
+        pinned: (j['pinned'] as bool?) ?? false,
+        favorite: (j['favorite'] as bool?) ?? false,
+        createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ??
+            DateTime.now(),
+        updatedAt: DateTime.tryParse(j['updatedAt'] as String? ?? '') ??
+            DateTime.now(),
+        deletedAt: j['deletedAt'] == null
+            ? null
+            : DateTime.tryParse(j['deletedAt'] as String),
+        words: (j['words'] as int?) ?? 0,
+        day: (j['day'] as String?) ?? dayKey(DateTime.now()),
+      );
+
+  NoteMeta copyWith({
+    String? title,
+    String? text,
+    NoteKind? kind,
+    List<String>? tags,
+    int? mood,
+    String? weather,
+    bool? pinned,
+    bool? favorite,
+    DateTime? updatedAt,
+    DateTime? deletedAt,
+    bool clearDeletedAt = false,
+    int? words,
+    String? day,
+  }) =>
+      NoteMeta(
+        id: id,
+        title: title ?? this.title,
+        text: text ?? this.text,
+        kind: kind ?? this.kind,
+        tags: tags ?? this.tags,
+        mood: mood ?? this.mood,
+        weather: weather ?? this.weather,
+        pinned: pinned ?? this.pinned,
+        favorite: favorite ?? this.favorite,
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+        deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
+        words: words ?? this.words,
+        day: day ?? this.day,
+      );
+}
+
+class Note {
+  Note({
+    required this.id,
+    required this.title,
+    required this.delta,
+    required this.text,
+    required this.kind,
+    required this.createdAt,
+    required this.updatedAt,
+    this.tags = const [],
+    this.mood,
+    this.weather,
+    this.pinned = false,
+    this.favorite = false,
+    this.deletedAt,
+    this.words = 0,
+    required this.day,
+  });
+
+  final String id;
+  String title;
+
+  /// Quill Delta operations，直接序列化保存。
+  List<dynamic> delta;
+  String text;
+  NoteKind kind;
+  List<String> tags;
+  int? mood;
+  String? weather;
+  bool pinned;
+  bool favorite;
+  DateTime createdAt;
+  DateTime updatedAt;
+  DateTime? deletedAt;
+  int words;
+  String day;
+
+  String get excerpt => excerptOf(text);
+  bool get isTrashed => deletedAt != null;
+
+  NoteMeta toMeta() => NoteMeta(
+        id: id,
+        title: title,
+        text: text,
+        kind: kind,
+        tags: tags,
+        mood: mood,
+        weather: weather,
+        pinned: pinned,
+        favorite: favorite,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        deletedAt: deletedAt,
+        words: words,
+        day: day,
+      );
+
+  factory Note.fromMeta(NoteMeta meta, {List<dynamic>? delta, String? text}) =>
+      Note(
+        id: meta.id,
+        title: meta.title,
+        delta: delta ?? [
+          {'insert': '\n'}
+        ],
+        text: text ?? meta.text,
+        kind: meta.kind,
+        tags: meta.tags,
+        mood: meta.mood,
+        weather: meta.weather,
+        pinned: meta.pinned,
+        favorite: meta.favorite,
+        createdAt: meta.createdAt,
+        updatedAt: meta.updatedAt,
+        deletedAt: meta.deletedAt,
+        words: meta.words,
+        day: meta.day,
+      );
+
+  Map<String, dynamic> toJson() => {
+        ...toMeta().toJson(),
+        'delta': delta,
+      };
+
+  factory Note.fromJson(Map<String, dynamic> j) => Note(
+        id: j['id'] as String,
+        title: (j['title'] as String?) ?? '',
+        delta: (j['delta'] as List?) ?? [
+          {'insert': '\n'}
+        ],
+        text: (j['text'] as String?) ?? '',
+        kind: NoteKindX.fromKey(j['kind'] as String?),
+        tags: (j['tags'] as List?)?.map((e) => e.toString()).toList() ?? [],
+        mood: j['mood'] as int?,
+        weather: j['weather'] as String?,
+        pinned: (j['pinned'] as bool?) ?? false,
+        favorite: (j['favorite'] as bool?) ?? false,
+        createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ??
+            DateTime.now(),
+        updatedAt: DateTime.tryParse(j['updatedAt'] as String? ?? '') ??
+            DateTime.now(),
+        deletedAt: j['deletedAt'] == null
+            ? null
+            : DateTime.tryParse(j['deletedAt'] as String),
+        words: (j['words'] as int?) ?? 0,
+        day: (j['day'] as String?) ?? dayKey(DateTime.now()),
+      );
+}
+
+class Snapshot {
+  Snapshot({
+    required this.savedAt,
+    required this.title,
+    required this.delta,
+    required this.text,
+    required this.words,
+  });
+
+  final DateTime savedAt;
+  final String title;
+  final List<dynamic> delta;
+  final String text;
+  final int words;
+
+  Map<String, dynamic> toJson() => {
+        'savedAt': savedAt.toIso8601String(),
+        'title': title,
+        'delta': delta,
+        'text': text,
+        'words': words,
+      };
+
+  factory Snapshot.fromJson(Map<String, dynamic> j) => Snapshot(
+        savedAt: DateTime.tryParse(j['savedAt'] as String? ?? '') ??
+            DateTime.now(),
+        title: (j['title'] as String?) ?? '',
+        delta: (j['delta'] as List?) ?? const [],
+        text: (j['text'] as String?) ?? '',
+        words: (j['words'] as int?) ?? 0,
+      );
+}
+
+class AiSettings {
+  AiSettings({
+    this.enabled = false,
+    this.baseUrl = 'https://api.deepseek.com/v1',
+    this.apiKey = '',
+    this.model = 'deepseek-chat',
+  });
+
+  bool enabled;
+  String baseUrl;
+  String apiKey;
+  String model;
+
+  Map<String, dynamic> toJson() => {
+        'enabled': enabled,
+        'baseUrl': baseUrl,
+        'apiKey': apiKey,
+        'model': model,
+      };
+
+  factory AiSettings.fromJson(Map<String, dynamic>? j) => AiSettings(
+        enabled: (j?['enabled'] as bool?) ?? false,
+        baseUrl: (j?['baseUrl'] as String?) ?? 'https://api.deepseek.com/v1',
+        apiKey: (j?['apiKey'] as String?) ?? '',
+        model: (j?['model'] as String?) ?? 'deepseek-chat',
+      );
+
+  bool get configured => enabled && apiKey.trim().isNotEmpty;
+}
+
+class WebDavSettings {
+  WebDavSettings({
+    this.enabled = false,
+    this.url = '',
+    this.username = '',
+    this.password = '',
+    this.folder = '/ThisNote',
+  });
+
+  bool enabled;
+  String url;
+  String username;
+  String password;
+  String folder;
+
+  Map<String, dynamic> toJson() => {
+        'enabled': enabled,
+        'url': url,
+        'username': username,
+        'password': password,
+        'folder': folder,
+      };
+
+  factory WebDavSettings.fromJson(Map<String, dynamic>? j) => WebDavSettings(
+        enabled: (j?['enabled'] as bool?) ?? false,
+        url: (j?['url'] as String?) ?? '',
+        username: (j?['username'] as String?) ?? '',
+        password: (j?['password'] as String?) ?? '',
+        folder: (j?['folder'] as String?) ?? '/ThisNote',
+      );
+
+  bool get configured =>
+      enabled && url.trim().isNotEmpty && username.trim().isNotEmpty;
+}
+
+class AppSettings {
+  AppSettings({
+    this.themeMode = ThemeMode.light,
+    this.accent = 'vermilion',
+    this.paperTexture = true,
+    this.editorWidth = 720,
+    this.editorScale = 1,
+    this.lineHeight = 1.9,
+    this.dailyGoal = 500,
+    this.lockEnabled = false,
+    this.pinHash,
+    this.pinSalt,
+    this.onboardingDone = false,
+    this.lastView = 'today',
+    this.sort = 'updated',
+    this.ai,
+    this.webdav,
+  });
+
+  ThemeMode themeMode;
+  String accent;
+  bool paperTexture;
+  double editorWidth;
+  double editorScale;
+  double lineHeight;
+  int dailyGoal;
+  bool lockEnabled;
+  String? pinHash;
+  String? pinSalt;
+  bool onboardingDone;
+  String lastView;
+  String sort;
+  AiSettings? ai;
+  WebDavSettings? webdav;
+
+  AiSettings get aiSettings => ai ??= AiSettings();
+  WebDavSettings get webdavSettings => webdav ??= WebDavSettings();
+
+  Map<String, dynamic> toJson() => {
+        'themeMode': themeMode.name,
+        'accent': accent,
+        'paperTexture': paperTexture,
+        'editorWidth': editorWidth,
+        'editorScale': editorScale,
+        'lineHeight': lineHeight,
+        'dailyGoal': dailyGoal,
+        'lockEnabled': lockEnabled,
+        'pinHash': pinHash,
+        'pinSalt': pinSalt,
+        'onboardingDone': onboardingDone,
+        'lastView': lastView,
+        'sort': sort,
+        'ai': aiSettings.toJson(),
+        'webdav': webdavSettings.toJson(),
+      };
+
+  factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
+        themeMode: switch (j['themeMode']) {
+          'system' => ThemeMode.system,
+          'dark' => ThemeMode.dark,
+          _ => ThemeMode.light,
+        },
+        accent: (j['accent'] as String?) ?? 'vermilion',
+        paperTexture: (j['paperTexture'] as bool?) ?? true,
+        editorWidth: ((j['editorWidth'] as num?) ?? 720).toDouble(),
+        editorScale: ((j['editorScale'] as num?) ?? 1).toDouble(),
+        lineHeight: ((j['lineHeight'] as num?) ?? 1.9).toDouble(),
+        dailyGoal: (j['dailyGoal'] as int?) ?? 500,
+        lockEnabled: (j['lockEnabled'] as bool?) ?? false,
+        pinHash: j['pinHash'] as String?,
+        pinSalt: j['pinSalt'] as String?,
+        onboardingDone: (j['onboardingDone'] as bool?) ?? false,
+        lastView: (j['lastView'] as String?) ?? 'today',
+        sort: (j['sort'] as String?) ?? 'updated',
+        ai: j['ai'] is Map<String, dynamic>
+            ? AiSettings.fromJson(j['ai'] as Map<String, dynamic>)
+            : null,
+        webdav: j['webdav'] is Map<String, dynamic>
+            ? WebDavSettings.fromJson(j['webdav'] as Map<String, dynamic>)
+            : null,
+      );
+
+  static AppSettings fromJsonString(String raw) {
+    try {
+      return AppSettings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return AppSettings();
+    }
+  }
+}

@@ -1,0 +1,70 @@
+name: this_note
+description: "此记 · ThisNote — 安静而强大的本地优先写作空间"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # editor engine
+  flutter_quill: ^11.6.0
+
+  # state / data
+  provider: ^6.1.5+1
+  path_provider: ^2.1.6
+  path: ^1.9.1
+  uuid: ^4.6.0
+  crypto: ^3.0.8
+  collection: ^1.19.1
+  intl: any
+
+  # desktop shell
+  window_manager: ^0.5.2
+  file_selector: ^1.1.0
+  share_plus: ^13.3.1
+  url_launcher: ^6.3.3
+
+  # export / sync / ai
+  pdf: ^3.13.1
+  archive: ^4.5.2
+  xml: ^7.1.0
+  http: ^1.6.0
+
+  # design
+  lucide_icons_flutter: ^4.0.1
+  flutter_animate: ^4.5.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/fonts/
+    - assets/brand/
+  fonts:
+    - family: NotoSansSC
+      fonts:
+        - asset: assets/fonts/NotoSansSC-Light.ttf
+          weight: 300
+        - asset: assets/fonts/NotoSansSC-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/NotoSansSC-Bold.ttf
+          weight: 700
+    - family: NotoSansSC-Oblique
+      fonts:
+        - asset: assets/fonts/NotoSansSC-Oblique.ttf
+    - family: NotoSansSCLight
+      fonts:
+        - asset: assets/fonts/NotoSansSC-Light.ttf
+    - family: WenKai
+      fonts:
+        - asset: assets/fonts/LXGWWenKai-Regular.ttf

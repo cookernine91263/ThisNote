@@ -1,0 +1,36 @@
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+app/build/
+app/.dart_tool/
+app/test_out/
+shots/
+assets-tmp/
+research/
+tools/flutter/
+tools/flutter.zip
+tools/android-sdk/
+tools/cmdline-tools.zip
+tools/gradle-9.3.1-all.zip
+tools/*.log
+key.log
+dist/
+
+# Android signing material (keep locally, never publish)
+app/android/key.properties
+app/android/app/*.jks
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store

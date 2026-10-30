@@ -1,0 +1,558 @@
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
+
+import '../core/theme.dart';
+import '../core/ui.dart';
+import '../data/models.dart';
+import '../services/ai_service.dart';
+import '../state/app_state.dart';
+
+enum AiAction {
+  polish,
+  expand,
+  shorten,
+  continueWriting,
+  title,
+  outline,
+  translateEn,
+  translateJa,
+}
+
+extension AiActionX on AiAction {
+  String get label => switch (this) {
+        AiAction.polish => '润色选中',
+        AiAction.expand => '扩写一点',
+        AiAction.shorten => '压缩一下',
+        AiAction.continueWriting => '接着写',
+        AiAction.title => '起个标题',
+        AiAction.outline => '生成提纲',
+        AiAction.translateEn => '译成英文',
+        AiAction.translateJa => '译成日文',
+      };
+
+  String get hint => switch (this) {
+        AiAction.polish => '让表达更准确、自然',
+        AiAction.expand => '补充细节，不虚构事实',
+        AiAction.shorten => '保留关键信息，更克制',
+        AiAction.continueWriting => '顺着现在的语气往下写',
+        AiAction.title => '根据正文起一个标题',
+        AiAction.outline => '把想法整理成结构',
+        AiAction.translateEn => '保留语气的英文译文',
+        AiAction.translateJa => '保留语气的日文译文',
+      };
+
+  IconData get icon => switch (this) {
+        AiAction.polish => LucideIcons.wandSparkles,
+        AiAction.expand => LucideIcons.maximize2,
+        AiAction.shorten => LucideIcons.minimize2,
+        AiAction.continueWriting => LucideIcons.penLine,
+        AiAction.title => LucideIcons.heading1,
+        AiAction.outline => LucideIcons.list,
+        AiAction.translateEn => LucideIcons.languages,
+        AiAction.translateJa => LucideIcons.languages,
+      };
+
+  bool get needsSelection => switch (this) {
+        AiAction.continueWriting || AiAction.title || AiAction.outline => false,
+        _ => true,
+      };
+
+  String get systemPrompt => switch (this) {
+        AiAction.polish =>
+          '你是一位克制、敏锐的中文写作编辑。请润色用户提供的文字：保持原意、语气与体裁，修正语病，让表达更准确、自然。不要添加解释，只输出润色后的正文。',
+        AiAction.expand =>
+          '你是一位中文写作助手。请在不虚构事实、不改变原意的前提下扩写用户提供的文字，补充可感知的细节与节奏。不要添加解释，只输出扩写后的正文。',
+        AiAction.shorten =>
+          '你是一位克制的中文编辑。请压缩用户提供的文字，保留关键信息与语气，删除重复和空话。不要添加解释，只输出压缩后的正文。',
+        AiAction.continueWriting =>
+          '你是一位中文写作助手。请顺着用户提供的文字与语气自然续写 2 到 3 段，不重复已有内容，不突然改变主题。不要添加解释，只输出续写部分。',
+        AiAction.title =>
+          '你是一位中文编辑。请为用户的文章起一个克制、有文学感、不超过 16 个字的标题。只输出标题本身，不要引号、编号或解释。',
+        AiAction.outline =>
+          '你是一位中文写作教练。请把用户的想法整理成一份简洁的写作提纲，使用「- 」列表，最多 7 条。只输出提纲。',
+        AiAction.translateEn =>
+          'You are a literary translator. Translate the text into natural English while preserving tone and nuance. Output only the translation.',
+        AiAction.translateJa =>
+          'あなたは文学的な翻訳者です。原文の語調とニュアンスを保ちながら、自然な日本語に翻訳してください。翻訳だけを出力してください。',
+      };
+}
+
+Future<void> showAiSheet(BuildContext context, EditorSession session) async {
+  final state = context.read<AppState>();
+  final ai = state.settings.aiSettings;
+  if (!ai.configured) {
+    await _showConfigure(context, state);
+    return;
+  }
+  final action = await showDialog<AiAction>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.2),
+    builder: (context) => const _AiMenuDialog(),
+  );
+  if (action == null || !context.mounted) return;
+  await _runAction(context, state, session, action);
+}
+
+Future<void> _showConfigure(BuildContext context, AppState state) async {
+  final c = AppPalette.of(context);
+  final go = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      backgroundColor: c.surface,
+      title: Text(
+        '先配置 AI 助手',
+        style: TextStyle(
+          fontFamily: 'NotoSansSC',
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: c.ink,
+        ),
+      ),
+      content: Text(
+        '此记不绑定任何厂商。你可以在设置里填写任意 OpenAI 兼容接口的地址、模型与 API Key。\n\n只有在点击 AI 功能时，选中的文字才会被发送。',
+        style: TextStyle(
+          fontFamily: 'NotoSansSC',
+          fontSize: 12,
+          height: 1.8,
+          color: c.inkSoft,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text('稍后', style: TextStyle(color: c.inkMuted)),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: c.ink,
+            foregroundColor: c.paper,
+          ),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('去设置'),
+        ),
+      ],
+    ),
+  );
+  if (go == true) state.setView('settings');
+}
+
+Future<void> _runAction(
+  BuildContext context,
+  AppState state,
+  EditorSession session,
+  AiAction action,
+) async {
+  final selection = session.controller.selection;
+  final selected = selection.isCollapsed
+      ? ''
+      : session.controller.document
+          .toPlainText()
+          .substring(selection.start, selection.end);
+  if (action.needsSelection && selected.trim().isEmpty) {
+    showToast(context, '先选中一段文字，再让 AI 帮忙', icon: LucideIcons.textCursor);
+    return;
+  }
+  final contextText = action.needsSelection
+      ? selected
+      : session.plainText.length > 6000
+          ? session.plainText.substring(0, 6000)
+          : session.plainText;
+  if (contextText.trim().isEmpty) {
+    showToast(context, '先写一点内容');
+    return;
+  }
+
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    barrierColor: Colors.black.withValues(alpha: 0.2),
+    builder: (context) => _AiBusy(action: action),
+  );
+  String? result;
+  String? error;
+  try {
+    final service = AiService(state.settings.aiSettings);
+    final user = StringBuffer();
+    if (session.note.title.trim().isNotEmpty) {
+      user.writeln('标题：${session.note.title.trim()}');
+    }
+    user.writeln('类型：${session.note.kind.label}');
+    user.writeln();
+    user.writeln(contextText);
+    result = await service.complete(
+      system: action.systemPrompt,
+      user: user.toString(),
+    );
+  } catch (e) {
+    error = e.toString();
+  }
+  if (!context.mounted) return;
+  Navigator.of(context, rootNavigator: true).pop();
+
+  if (error != null) {
+    showToast(context, error, icon: LucideIcons.alertCircle);
+    return;
+  }
+  final text = result!.trim();
+  if (text.isEmpty) {
+    showToast(context, 'AI 没有返回内容');
+    return;
+  }
+  if (action == AiAction.title) {
+    session.titleController.text = text.replaceAll(RegExp(r'^["「『]|["」』]$'), '');
+    session.scheduleSave(immediate: true);
+    showToast(context, '标题已更新', icon: LucideIcons.sparkles);
+    return;
+  }
+
+  final accept = await showDialog<bool>(
+    context: context,
+    builder: (context) => _AiResultDialog(
+      action: action,
+      result: text,
+      canReplace: !selection.isCollapsed &&
+          const [
+            AiAction.polish,
+            AiAction.expand,
+            AiAction.shorten,
+            AiAction.translateEn,
+            AiAction.translateJa,
+          ].contains(action),
+    ),
+  );
+  if (accept != true || !context.mounted) return;
+
+  if (const [
+    AiAction.polish,
+    AiAction.expand,
+    AiAction.shorten,
+    AiAction.translateEn,
+    AiAction.translateJa,
+  ].contains(action) && !selection.isCollapsed) {
+    session.controller.replaceText(
+      selection.start,
+      selection.end - selection.start,
+      text,
+      TextSelection.collapsed(offset: selection.start + text.length),
+    );
+  } else {
+    session.controller.replaceText(
+      selection.start,
+      0,
+      text,
+      TextSelection.collapsed(offset: selection.start + text.length),
+    );
+  }
+  session.scheduleSave(immediate: true);
+  if (context.mounted) {
+    showToast(context, '已写入纸上', icon: LucideIcons.sparkles);
+  }
+}
+
+class _AiMenuDialog extends StatelessWidget {
+  const _AiMenuDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return Dialog(
+      backgroundColor: c.surface,
+      insetPadding: const EdgeInsets.all(22),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: c.line),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'AI 助手',
+                    style: TextStyle(
+                      fontFamily: 'WenKai',
+                      fontSize: 24,
+                      letterSpacing: 1,
+                      color: c.ink,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: c.accentSoft,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '可选',
+                      style: TextStyle(
+                        fontFamily: 'NotoSansSC',
+                        fontSize: 8.5,
+                        color: c.accent,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  SoftIconButton(
+                    icon: LucideIcons.x,
+                    size: 28,
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 3),
+              Text(
+                '先选中文字；标题/提纲/续写会使用当前正文。',
+                style: TextStyle(
+                  fontFamily: 'NotoSansSC',
+                  fontSize: 10,
+                  color: c.inkMuted,
+                ),
+              ),
+              const SizedBox(height: 12),
+              for (final action in AiAction.values)
+                HoverBuilder(
+                  builder: (context, hovered, t) => GestureDetector(
+                    onTap: () => Navigator.of(context).pop(action),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 140),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 9,
+                      ),
+                      margin: const EdgeInsets.only(bottom: 2),
+                      decoration: BoxDecoration(
+                        color: hovered ? c.paper : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            action.icon,
+                            size: 14,
+                            color: hovered ? c.accent : c.inkMuted,
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            action.label,
+                            style: TextStyle(
+                              fontFamily: 'NotoSansSC',
+                              fontSize: 12,
+                              color: c.ink,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              action.hint,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontFamily: 'NotoSansSC',
+                                fontSize: 9,
+                                color: c.inkMuted,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AiBusy extends StatefulWidget {
+  const _AiBusy({required this.action});
+  final AiAction action;
+
+  @override
+  State<_AiBusy> createState() => _AiBusyState();
+}
+
+class _AiBusyState extends State<_AiBusy>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      child: Container(
+        width: 250,
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: c.line),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedBuilder(
+              animation: _c,
+              builder: (context, _) => Transform.rotate(
+                angle: _c.value * 6.283,
+                child: Icon(LucideIcons.sparkles, size: 22, color: c.accent),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '${widget.action.label}…',
+              style: TextStyle(
+                fontFamily: 'NotoSansSC',
+                fontSize: 12,
+                color: c.inkSoft,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '正在读你写下的字',
+              style: TextStyle(
+                fontFamily: 'NotoSansSC',
+                fontSize: 9,
+                color: c.inkMuted,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AiResultDialog extends StatelessWidget {
+  const _AiResultDialog({
+    required this.action,
+    required this.result,
+    required this.canReplace,
+  });
+
+  final AiAction action;
+  final String result;
+  final bool canReplace;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return Dialog(
+      backgroundColor: c.surface,
+      insetPadding: const EdgeInsets.all(22),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: c.line),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 560),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 18, 22, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(LucideIcons.sparkles, size: 15, color: c.accent),
+                  const SizedBox(width: 7),
+                  Text(
+                    'AI 的建议 · ${action.label}',
+                    style: TextStyle(
+                      fontFamily: 'NotoSansSC',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: c.ink,
+                    ),
+                  ),
+                  const Spacer(),
+                  SoftIconButton(
+                    icon: LucideIcons.x,
+                    size: 28,
+                    onPressed: () => Navigator.of(context).pop(false),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Flexible(
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: c.paper,
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(color: c.line),
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      result,
+                      style: TextStyle(
+                        fontFamily: 'NotoSansSC',
+                        fontSize: 12.5,
+                        height: 1.8,
+                        color: c.inkSoft,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: Text(
+                      '放弃',
+                      style: TextStyle(
+                        fontFamily: 'NotoSansSC',
+                        fontSize: 11,
+                        color: c.inkMuted,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: c.ink,
+                      foregroundColor: c.paper,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: Text(
+                      canReplace ? '替换选中' : '插入',
+                      style: const TextStyle(fontSize: 11.5),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
