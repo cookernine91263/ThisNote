@@ -84,11 +84,16 @@ class SettingsPage extends StatelessWidget {
                             icon: entry.$2,
                             label: entry.$3,
                             onTap: () {},
-                            onTapPosition: (origin) => ThemeReveal.reveal(
-                              context: context,
-                              globalOrigin: origin,
-                              apply: () => state.setThemeMode(entry.$1),
-                            ),
+                            onTapPosition: (origin) {
+                              // 点的就是当前主题：不播那段看不见的扩散，
+                              // 也不让遮罩平白挡掉半秒多的输入。
+                              if (s.themeMode == entry.$1) return;
+                              ThemeReveal.reveal(
+                                context: context,
+                                globalOrigin: origin,
+                                apply: () => state.setThemeMode(entry.$1),
+                              );
+                            },
                           ),
                         ),
                     ],
