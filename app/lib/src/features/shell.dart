@@ -131,7 +131,7 @@ class _AppShellState extends State<AppShell> with WindowListener {
                       child: ClipRect(
                         child: morph
                             ? MorphSwitcher(
-                                duration: const Duration(milliseconds: 470),
+                                duration: const Duration(milliseconds: 560),
                                 child: KeyedSubtree(
                                   key: ValueKey(
                                     '${state.view}-${state.current?.id ?? 'desk'}',

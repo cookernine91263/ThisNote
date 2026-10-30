@@ -246,9 +246,9 @@ class _MorphSession {
     if (_phase == _Phase.idle || _phase == _Phase.pending) return child;
     final t = _t;
     if (_pairs.values.contains(tag)) {
-      return Opacity(opacity: 1 - _ramp(t, 0, 0.06), child: child);
+      return Opacity(opacity: 1 - _ramp(t, 0.02, 0.18), child: child);
     }
-    return Opacity(opacity: 1 - _ramp(t, 0, 0.28), child: child);
+    return Opacity(opacity: 1 - _ramp(t, 0, 0.26), child: child);
   }
 
   /// 新块：从配上的旧块的位置、尺寸飞回自己的位置，途中一直显示新的内容。
@@ -260,9 +260,10 @@ class _MorphSession {
     final source = _pairs[tag];
     final from = _canFly(tag) ? _rectOf(keys[outSlot]![source!]) : null;
     if (own == null || from == null) {
-      return Opacity(opacity: _ramp(t, 0.45, 0.92), child: child);
+      return Opacity(opacity: _ramp(t, 0.5, 0.95), child: child);
     }
-    final rect = Rect.lerp(from, own, t)!;
+    // 先在旧位置上把新内容淡进来（旧内容同时淡出），再从那里飞回自己的位置。
+    final rect = Rect.lerp(from, own, _flight(tag))!;
     final matrix = Matrix4.identity()
       ..translateByDouble(rect.left - own.left, rect.top - own.top, 0, 1)
       ..scaleByDouble(
@@ -271,7 +272,17 @@ class _MorphSession {
         1,
         1,
       );
-    return Transform(transform: matrix, child: child);
+    return Opacity(
+      opacity: _ramp(t, 0.02, 0.2),
+      child: Transform(transform: matrix, child: child),
+    );
+  }
+
+  /// 每块错开约 35ms 起飞，免得一起抢视线。
+  double _flight(String tag) {
+    final index = _pairs.keys.toList().indexOf(tag);
+    final delay = index <= 0 ? 0.0 : (index * 0.035).clamp(0.0, 0.16);
+    return _ramp(_t, 0.16 + delay, 1);
   }
 
   Rect? _rectOf(GlobalKey? key) {
