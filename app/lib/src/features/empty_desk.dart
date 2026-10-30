@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../core/format.dart';
 import '../core/icons.dart';
 import '../core/motion.dart';
+import '../core/morph.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../data/models.dart';
@@ -60,8 +61,9 @@ class EmptyDesk extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(56, 46, 56, 60),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 760),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: MorphGroup(
+              id: 'desk',
+              tags: const ['top', 'title', 'lede', 'main', 'recent', 'quote'],
               children: [
                 Reveal(
                   child: Row(
@@ -162,33 +164,38 @@ class EmptyDesk extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 50),
-                if (recent.isNotEmpty) ...[
-                  SectionLabel(
-                    '最近写过',
-                    trailing: GestureDetector(
-                      onTap: () => state.setView('all'),
-                      child: Text(
-                        '全部',
-                        style: TextStyle(
-                          fontFamily: 'NotoSansSC',
-                          fontSize: 10.5,
-                          color: c.inkMuted,
+                if (recent.isNotEmpty)
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SectionLabel(
+                        '最近写过',
+                        trailing: GestureDetector(
+                          onTap: () => state.setView('all'),
+                          child: Text(
+                            '全部',
+                            style: TextStyle(
+                              fontFamily: 'NotoSansSC',
+                              fontSize: 10.5,
+                              color: c.inkMuted,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      Container(
+                        decoration: BoxDecoration(
+                          border: Border(top: BorderSide(color: c.line)),
+                        ),
+                        child: Column(
+                          children: [
+                            for (final note in recent)
+                              _RecentRow(note: note),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border(top: BorderSide(color: c.line)),
-                    ),
-                    child: Column(
-                      children: [
-                        for (final note in recent)
-                          _RecentRow(note: note),
-                      ],
-                    ),
-                  ),
-                ],
                 const SizedBox(height: 38),
                 Center(
                   child: Column(

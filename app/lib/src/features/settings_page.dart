@@ -7,6 +7,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+
+import '../core/morph.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/webdav_service.dart';
@@ -41,8 +43,9 @@ class SettingsPage extends StatelessWidget {
         child: Center(
           child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 820),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: MorphGroup(
+            id: 'settings',
+            tags: const ['title', 'lede', 'main', 'main-2'],
             children: [
               Text(
                 '设置',

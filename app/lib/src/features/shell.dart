@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../core/morph.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
 import '../core/theme_reveal.dart';
@@ -128,63 +129,44 @@ class _AppShellState extends State<AppShell> with WindowListener {
                     child: ColoredBox(
                       color: AppPalette.of(context).paper,
                       child: ClipRect(
-                      child: AnimatedSwitcher(
-                        key: ValueKey('motion-${state.settings.motionStyle}'),
-                        duration: Duration(milliseconds: morph ? 430 : 280),
-                        reverseDuration:
-                            Duration(milliseconds: morph ? 360 : 220),
-                        switchInCurve: morph
-                            ? Curves.easeInOutCubic
-                            : Curves.easeOutCubic,
-                        switchOutCurve: morph
-                            ? Curves.easeInOutCubic
-                            : Curves.easeInCubic,
-                        layoutBuilder: (current, previous) =>
-                            current ?? const SizedBox.shrink(),
-                        transitionBuilder: (child, animation) {
-                          if (morph) {
-                            final curve = CurvedAnimation(
-                              parent: animation,
-                              curve: Curves.easeInOutCubic,
-                              reverseCurve: Curves.easeInOutCubic,
-                            );
-                            return FadeTransition(
-                              opacity: curve,
-                              child: ScaleTransition(
-                                alignment: Alignment.topCenter,
-                                scale: Tween<double>(
-                                  begin: 0.968,
-                                  end: 1,
-                                ).animate(curve),
-                                child: SlideTransition(
-                                  position: Tween<Offset>(
-                                    begin: const Offset(0, 0.012),
+                        child: morph
+                            ? MorphSwitcher(
+                                duration: const Duration(milliseconds: 470),
+                                child: KeyedSubtree(
+                                  key: ValueKey(
+                                    '${state.view}-${state.current?.id ?? 'desk'}',
+                                  ),
+                                  child: main,
+                                ),
+                              )
+                            : AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 280),
+                                reverseDuration:
+                                    const Duration(milliseconds: 220),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeInCubic,
+                                layoutBuilder: (current, previous) =>
+                                    current ?? const SizedBox.shrink(),
+                                transitionBuilder: (child, animation) {
+                                  final slide = Tween<Offset>(
+                                    begin: const Offset(0.018, 0),
                                     end: Offset.zero,
-                                  ).animate(curve),
-                                  child: child,
+                                  ).animate(animation);
+                                  return FadeTransition(
+                                    opacity: animation,
+                                    child: SlideTransition(
+                                      position: slide,
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: KeyedSubtree(
+                                  key: ValueKey(
+                                    '${state.view}-${state.current?.id ?? 'desk'}',
+                                  ),
+                                  child: main,
                                 ),
                               ),
-                            );
-                          }
-                          final slide = Tween<Offset>(
-                            begin: const Offset(0.018, 0),
-                            end: Offset.zero,
-                          ).animate(animation);
-                          return FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: slide,
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: KeyedSubtree(
-                          key: ValueKey(
-                            '${state.view}-${state.current?.id ?? 'desk'}',
-                          ),
-                          child: main,
-                        ),
-                      ),
                       ),
                     ),
                   ),
