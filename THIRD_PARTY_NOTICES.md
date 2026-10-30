@@ -12,6 +12,27 @@
 - 许可证全文：`app/assets/fonts/OFL-NotoSansSC.txt`
 
 
+### Noto Serif SC
+
+- 用途：宋体正文
+- 来源：https://fonts.google.com/noto/specimen/Noto+Serif+SC
+- 许可证：SIL Open Font License 1.1
+- 许可证全文：`app/assets/fonts/OFL-NotoSerifSC.txt`
+
+### Ma Shan Zheng / 马善政毛笔
+
+- 用途：手写标题与花字
+- 来源：https://fonts.google.com/specimen/Ma+Shan+Zheng
+- 许可证：SIL Open Font License 1.1
+- 许可证全文：`app/assets/fonts/OFL-MaShanZheng.txt`
+
+### ZCOOL XiaoWei / 站酷小薇
+
+- 用途：雅致标题
+- 来源：https://fonts.google.com/specimen/ZCOOL+XiaoWei
+- 许可证：SIL Open Font License 1.1
+- 许可证全文：`app/assets/fonts/OFL-ZCOOLXiaoWei.txt`
+
 ### LXGW WenKai / 霞鹜文楷
 
 - 用途：标题、字标与「花字」

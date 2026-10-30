@@ -196,6 +196,11 @@ class _EditorTopBar extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           SoftIconButton(
+            icon: LucideIcons.share2,
+            tooltip: '导出 · 图片 / PDF / Word',
+            onPressed: () => showExportSheet(context),
+          ),
+          SoftIconButton(
             icon: LucideIcons.history,
             tooltip: '历史版本',
             onPressed: () => _showHistory(context, state, session),
@@ -524,7 +529,9 @@ class _EditorCanvas extends StatelessWidget {
                                   ],
                                   textSelectionThemeData: TextSelectionThemeData(
                                     cursorColor: c.accent,
-                                    selectionColor: c.selection,
+                                    selectionColor: c.accent.withValues(
+                                      alpha: c.isDark ? 0.34 : 0.20,
+                                    ),
                                     selectionHandleColor: c.accent,
                                   ),
                                   onLaunchUrl: (url) async {

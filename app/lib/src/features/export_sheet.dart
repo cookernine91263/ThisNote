@@ -15,6 +15,7 @@ import '../core/theme.dart';
 import '../core/ui.dart';
 import '../state/app_state.dart';
 import '../services/exporter.dart';
+import 'editor/note_image.dart';
 
 Future<void> showExportSheet(BuildContext context) async {
   final state = context.read<AppState>();
@@ -26,6 +27,10 @@ Future<void> showExportSheet(BuildContext context) async {
     builder: (context) => const _ExportDialog(),
   );
   if (format == null || !context.mounted) return;
+  if (format == ExportFormat.png) {
+    await showPngExport(context);
+    return;
+  }
 
   showDialog<void>(
     context: context,
@@ -44,6 +49,8 @@ Future<void> showExportSheet(BuildContext context) async {
       case ExportFormat.pdf:
         bytes = await exporter.pdf(note);
         break;
+      case ExportFormat.png:
+        return;
       case ExportFormat.html:
         bytes = Uint8List.fromList(utf8.encode(await exporter.html(note)));
         break;
@@ -112,8 +119,11 @@ class _ExportDialog extends StatelessWidget {
         side: BorderSide(color: c.line),
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 500),
-        child: Padding(
+        constraints: BoxConstraints(
+          maxWidth: 500,
+          maxHeight: MediaQuery.sizeOf(context).height - 72,
+        ),
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -168,6 +178,7 @@ class _FormatRow extends StatelessWidget {
     final icon = switch (format) {
       ExportFormat.docx => LucideIcons.fileText,
       ExportFormat.pdf => LucideIcons.fileType,
+      ExportFormat.png => LucideIcons.image,
       ExportFormat.markdown => LucideIcons.fileCode,
       ExportFormat.html => LucideIcons.globe,
       ExportFormat.txt => LucideIcons.file,

@@ -418,6 +418,7 @@ class AppSettings {
     this.onboardingDone = false,
     this.lastView = 'today',
     this.sort = 'updated',
+    this.savedColors = const [],
     this.ai,
     this.webdav,
   });
@@ -435,6 +436,7 @@ class AppSettings {
   bool onboardingDone;
   String lastView;
   String sort;
+  List<String> savedColors;
   AiSettings? ai;
   WebDavSettings? webdav;
 
@@ -455,6 +457,7 @@ class AppSettings {
         'onboardingDone': onboardingDone,
         'lastView': lastView,
         'sort': sort,
+        'savedColors': savedColors,
         'ai': aiSettings.toJson(),
         'webdav': webdavSettings.toJson(),
       };
@@ -477,6 +480,10 @@ class AppSettings {
         onboardingDone: (j['onboardingDone'] as bool?) ?? false,
         lastView: (j['lastView'] as String?) ?? 'today',
         sort: (j['sort'] as String?) ?? 'updated',
+        savedColors: (j['savedColors'] as List?)
+                ?.whereType<String>()
+                .toList(growable: true) ??
+            <String>[],
         ai: j['ai'] is Map<String, dynamic>
             ? AiSettings.fromJson(j['ai'] as Map<String, dynamic>)
             : null,

@@ -5,37 +5,15 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
-import '../../core/format.dart';
 import '../../core/motion.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
 import '../../state/app_state.dart';
 import '../ai_sheet.dart';
+import 'color_picker.dart';
+import 'font_picker.dart';
 import 'huazi.dart';
-
-const _textColors = <String>[
-  '#211E19',
-  '#575149',
-  '#8D8576',
-  '#A84637',
-  '#A8824B',
-  '#6F806C',
-  '#56697D',
-  '#7A5A6B',
-  '#2E5B56',
-  '#8C6534',
-];
-
-const _highlightColors = <String>[
-  '#F3E2BE',
-  '#EED4CA',
-  '#DCE6D6',
-  '#D6E2EA',
-  '#E8DCE8',
-  '#EDE3D0',
-  '#DDD8CE',
-  '#F5E9D7',
-];
+import 'note_fonts.dart';
 
 class EditorToolbar extends StatelessWidget {
   const EditorToolbar({
@@ -61,7 +39,7 @@ class EditorToolbar extends StatelessWidget {
         final header = attrs[Attribute.header.key]?.value;
         final list = attrs[Attribute.list.key]?.value;
         final align = attrs[Attribute.align.key]?.value;
-        final font = attrs[Attribute.font.key]?.value;
+        final font = attrs[Attribute.font.key]?.value?.toString();
         final thin = font == 'style:thin' || font == 'NotoSansSCLight';
         final huazi = isHuaziStyle(attrs);
 
@@ -132,6 +110,24 @@ class EditorToolbar extends StatelessWidget {
             ],
           ),
           const SizedBox(width: 2),
+          _FontChip(
+            label: fontLabel(font),
+            active: font != null,
+            onTap: () async {
+              final selected = await showFontPicker(
+                context,
+                controller: controller,
+              );
+              if (selected == null) return;
+              controller.formatSelection(
+                selected == '__default__'
+                    ? Attribute.clone(Attribute.font, null)
+                    : Attribute('font', AttributeScope.inline, selected),
+              );
+              session.editorFocus.requestFocus();
+            },
+          ),
+          const SizedBox(width: 2),
           _ToolButton(
             icon: LucideIcons.bold,
             tooltip: '加粗 · Ctrl B',
@@ -174,7 +170,10 @@ class EditorToolbar extends StatelessWidget {
             tooltip: '文字颜色',
             active: has('color'),
             onPressed: () async {
-              final hex = await _pickColor(context, background: false);
+              final hex = await showNoteColorPicker(
+                context,
+                background: false,
+              );
               if (hex == null) return;
               controller.formatSelection(
                 hex == 'clear'
@@ -188,7 +187,10 @@ class EditorToolbar extends StatelessWidget {
             tooltip: '高亮',
             active: has('background'),
             onPressed: () async {
-              final hex = await _pickColor(context, background: true);
+              final hex = await showNoteColorPicker(
+                context,
+                background: true,
+              );
               if (hex == null) return;
               controller.formatSelection(
                 hex == 'clear'
@@ -346,7 +348,7 @@ class EditorToolbar extends StatelessWidget {
           ),
         ),
         content: SizedBox(
-          width: 380,
+          width: (MediaQuery.sizeOf(context).width - 96).clamp(220.0, 380.0),
           child: TextField(
             controller: text,
             autofocus: true,
@@ -396,79 +398,6 @@ class EditorToolbar extends StatelessWidget {
     return result;
   }
 
-  Future<String?> _pickColor(
-    BuildContext context, {
-    required bool background,
-  }) async {
-    final c = AppPalette.of(context);
-    final colors = background ? _highlightColors : _textColors;
-    return showDialog<String>(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: c.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: c.line),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                background ? '高亮颜色' : '文字颜色',
-                style: TextStyle(
-                  fontFamily: 'NotoSansSC',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: c.ink,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final hex in colors)
-                    InkWell(
-                      onTap: () => Navigator.of(context).pop(hex),
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          color: parseHex(hex),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: c.lineStrong.withValues(alpha: 0.6),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () => Navigator.of(context).pop('clear'),
-                  child: Text(
-                    '清除颜色',
-                    style: TextStyle(
-                      fontFamily: 'NotoSansSC',
-                      fontSize: 11,
-                      color: c.inkMuted,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _ToolButton extends StatelessWidget {
@@ -545,6 +474,65 @@ class _HuaziButton extends StatelessWidget {
                       letterSpacing: 1,
                       color: active ? c.onAccent : c.accent,
                     ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _FontChip extends StatelessWidget {
+  const _FontChip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: HoverBuilder(
+        builder: (context, hovered, t) {
+          return GestureDetector(
+            onTap: onTap,
+            child: AnimatedContainer(
+              duration: Motion.fast,
+              width: 64,
+              height: 30,
+              padding: const EdgeInsets.symmetric(horizontal: 7),
+              decoration: BoxDecoration(
+                color: active
+                    ? c.accentSoft
+                    : hovered
+                        ? c.paper
+                        : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontFamily: 'NotoSansSC',
+                      fontSize: 10.5,
+                      color: active ? c.accent : c.inkSoft,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    LucideIcons.chevronDown,
+                    size: 11,
+                    color: active ? c.accent : c.inkMuted,
                   ),
                 ],
               ),

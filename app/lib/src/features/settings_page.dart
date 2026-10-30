@@ -11,10 +11,12 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/webdav_service.dart';
 
+import '../core/format.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../state/app_state.dart';
+import 'editor/color_picker.dart';
 import 'editor/huazi.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -131,6 +133,71 @@ class SettingsPage extends StatelessWidget {
                             ),
                           ),
                         ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: GestureDetector(
+                          onTap: () async {
+                            final hex = await showNoteColorPicker(
+                              context,
+                              background: false,
+                            );
+                            if (hex != null && hex != 'clear') {
+                              await state.setAccent(hex);
+                            }
+                          },
+                          child: Column(
+                            children: [
+                              AnimatedContainer(
+                                duration: Motion.fast,
+                                width: 26,
+                                height: 26,
+                                decoration: BoxDecoration(
+                                  color: s.accent.startsWith('#')
+                                      ? parseHex(s.accent)
+                                      : null,
+                                  gradient: s.accent.startsWith('#')
+                                      ? null
+                                      : const SweepGradient(
+                                          colors: [
+                                            Color(0xFFA84637),
+                                            Color(0xFF9C7A43),
+                                            Color(0xFF5E7359),
+                                            Color(0xFF44515F),
+                                            Color(0xFF7A5A6B),
+                                            Color(0xFFA84637),
+                                          ],
+                                        ),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: s.accent.startsWith('#')
+                                        ? c.ink
+                                        : Colors.transparent,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: Icon(
+                                  LucideIcons.pipette,
+                                  size: 12,
+                                  color: s.accent.startsWith('#')
+                                      ? c.paper
+                                      : Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '自选',
+                                style: TextStyle(
+                                  fontFamily: 'NotoSansSC',
+                                  fontSize: 8.5,
+                                  color: s.accent.startsWith('#')
+                                      ? c.ink
+                                      : c.inkMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -400,9 +467,9 @@ class SettingsPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '通用字体：思源黑体 Noto Sans SC（SIL Open Font License）\n'
-                    '花字字体：霞鹜文楷 LXGW WenKai（SIL Open Font License）\n'
-                    '两套字体均覆盖中文、英文与日文假名。',
+                    '内置字体：思源黑体 / 思源宋体 / 霞鹜文楷 /\n'
+                    '马善政毛笔 / 站酷小薇，均为 SIL Open Font License。\n'
+                    '中、英、日与假名可在同一页里混排。',
                     style: TextStyle(
                       fontFamily: 'NotoSansSC',
                       fontSize: 9.5,

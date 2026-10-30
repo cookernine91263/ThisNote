@@ -87,7 +87,7 @@ class AppPalette extends ThemeExtension<AppPalette> {
     sage: Color(0xFF6F806C),
     blue: Color(0xFF56697D),
     danger: Color(0xFFA04434),
-    selection: Color(0xFFEAD7BE),
+    selection: Color(0x33A84637),
     shadow: Color(0xFF4A3826),
     grain: 0.055,
   );
@@ -108,7 +108,7 @@ class AppPalette extends ThemeExtension<AppPalette> {
     sage: Color(0xFF93A38E),
     blue: Color(0xFF8AA0B8),
     danger: Color(0xFFD08070),
-    selection: Color(0xFF3D352B),
+    selection: Color(0x55D07E6F),
     shadow: Color(0xFF000000),
     grain: 0.04,
   );
@@ -235,7 +235,12 @@ class AppTheme {
     String accent = 'vermilion',
   }) {
     var c = brightness == Brightness.dark ? AppPalette.dark : AppPalette.light;
-    final accentColor = accents[accent] ?? accents['vermilion']!;
+    final custom = accent.startsWith('#')
+        ? int.tryParse(accent.substring(1), radix: 16)
+        : null;
+    final accentColor = custom != null
+        ? Color(0xFF000000 | custom)
+        : accents[accent] ?? accents['vermilion']!;
     final adjusted = brightness == Brightness.dark
         ? Color.lerp(accentColor, Colors.white, 0.35)!
         : accentColor;

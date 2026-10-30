@@ -8,6 +8,7 @@ import '../core/format.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
+import '../data/models.dart';
 import '../state/app_state.dart';
 
 class StatsPage extends StatelessWidget {
@@ -65,7 +66,9 @@ class StatsPage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 20),
-        Wrap(
+        Reveal(
+          delay: const Duration(milliseconds: 60),
+          child: Wrap(
           spacing: 10,
           runSpacing: 10,
           children: [
@@ -80,6 +83,7 @@ class StatsPage extends StatelessWidget {
               label: '总篇数',
               value: '${state.activeNotes.length}',
               hint: '日记 ${state.diaryCount} · 作文 ${state.essayCount} · 随笔 ${state.noteCount}',
+              onTap: () => state.setView('all'),
             ),
             _Metric(
               icon: LucideIcons.flame,
@@ -98,9 +102,12 @@ class StatsPage extends StatelessWidget {
                   : '还差 ${math.max(0, state.settings.dailyGoal - state.todayWords)} 字',
             ),
           ],
+          ),
         ),
         const SizedBox(height: 14),
-        PaperSurface(
+        Reveal(
+          delay: const Duration(milliseconds: 120),
+          child: PaperSurface(
           padding: const EdgeInsets.fromLTRB(22, 18, 22, 16),
           radius: 14,
           child: Column(
@@ -128,6 +135,7 @@ class StatsPage extends StatelessWidget {
                           stat: d,
                           maxWords: maxWords == 0 ? 1 : maxWords,
                           isToday: dayKey(d.date) == dayKey(DateTime.now()),
+                          onTap: () => _showDay(context, state, d.date),
                         ),
                       ),
                   ],
@@ -135,9 +143,12 @@ class StatsPage extends StatelessWidget {
               ),
             ],
           ),
+          ),
         ),
         const SizedBox(height: 14),
-        PaperSurface(
+        Reveal(
+          delay: const Duration(milliseconds: 180),
+          child: PaperSurface(
           padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
           radius: 14,
           child: Column(
@@ -154,7 +165,10 @@ class StatsPage extends StatelessWidget {
                   ),
                 ),
               ),
-              _Heatmap(data: state.heatmap),
+              _Heatmap(
+                data: state.heatmap,
+                onDayTap: (day) => _showDay(context, state, day),
+              ),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -195,9 +209,12 @@ class StatsPage extends StatelessWidget {
               ),
             ],
           ),
+          ),
         ),
         const SizedBox(height: 14),
-        Row(
+        Reveal(
+          delay: const Duration(milliseconds: 240),
+          child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
@@ -297,6 +314,7 @@ class StatsPage extends StatelessWidget {
               ),
             ),
           ],
+          ),
         ),
         const SizedBox(height: 24),
       ],
@@ -320,6 +338,160 @@ class StatsPage extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _showDay(
+    BuildContext context,
+    AppState state,
+    DateTime day,
+  ) async {
+    final notes = state.activeNotes
+        .where((n) => dayKey(n.updatedAt) == dayKey(day))
+        .toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    if (notes.isEmpty) {
+      showToast(context, '${day.month} 月 ${day.day} 日还没有文字');
+      return;
+    }
+    var total = 0;
+    for (final note in notes) {
+      total += note.words;
+    }
+    final c = AppPalette.of(context);
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.24),
+      builder: (context) => Dialog(
+        backgroundColor: c.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: c.line),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 430, maxHeight: 520),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      '${day.month} 月 ${day.day} 日',
+                      style: TextStyle(
+                        fontFamily: 'WenKai',
+                        fontSize: 24,
+                        color: c.ink,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${notes.length} 篇 · $total 字',
+                      style: TextStyle(
+                        fontFamily: 'NotoSansSC',
+                        fontSize: 10,
+                        color: c.inkMuted,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        for (final note in notes)
+                          _DayNoteRow(
+                            note: note,
+                            onTap: () async {
+                              Navigator.of(context).pop();
+                              await state.openNote(note.id);
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DayNoteRow extends StatelessWidget {
+  const _DayNoteRow({required this.note, required this.onTap});
+  final NoteMeta note;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return HoverBuilder(
+      builder: (context, hovered, t) {
+        return GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.fromLTRB(11, 9, 11, 9),
+            decoration: BoxDecoration(
+              color: hovered ? c.paper : Colors.transparent,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: c.line),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  note.kind == NoteKind.diary
+                      ? LucideIcons.calendarHeart
+                      : note.kind == NoteKind.essay
+                          ? LucideIcons.penLine
+                          : LucideIcons.feather,
+                  size: 14,
+                  color: c.accent,
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        note.title.trim().isEmpty ? '无题' : note.title.trim(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontFamily: 'NotoSansSC',
+                          fontSize: 11.5,
+                          color: c.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${note.words} 字 · ${note.kind.label}',
+                        style: TextStyle(
+                          fontFamily: 'NotoSansSC',
+                          fontSize: 8.5,
+                          color: c.inkMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  LucideIcons.arrowUpRight,
+                  size: 13,
+                  color: c.inkMuted,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _Metric extends StatelessWidget {
@@ -329,6 +501,7 @@ class _Metric extends StatelessWidget {
     required this.value,
     required this.hint,
     this.suffix = '',
+    this.onTap,
   });
 
   final IconData icon;
@@ -336,16 +509,24 @@ class _Metric extends StatelessWidget {
   final String value;
   final String suffix;
   final String hint;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
-    return SizedBox(
-      width: 205,
-      child: PaperSurface(
-        padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
-        radius: 12,
-        child: Column(
+    return HoverBuilder(
+      builder: (context, hovered, t) {
+        return AnimatedScale(
+          scale: hovered && onTap != null ? 1.012 : 1,
+          duration: const Duration(milliseconds: 140),
+          child: GestureDetector(
+            onTap: onTap,
+            child: SizedBox(
+              width: 205,
+              child: PaperSurface(
+                padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
+                radius: 12,
+                child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -368,8 +549,8 @@ class _Metric extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                Text(
-                  value,
+                RollingNumber(
+                  int.tryParse(value) ?? 0,
                   style: TextStyle(
                     fontFamily: 'NotoSansSC',
                     fontSize: 26,
@@ -401,8 +582,12 @@ class _Metric extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -412,18 +597,22 @@ class _Bar extends StatelessWidget {
     required this.stat,
     required this.maxWords,
     required this.isToday,
+    required this.onTap,
   });
 
   final DayStat stat;
   final int maxWords;
   final bool isToday;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     final ratio = (stat.words / maxWords).clamp(0.0, 1.0);
     const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
-    return Tooltip(
+    return GestureDetector(
+      onTap: onTap,
+      child: Tooltip(
       message: '${stat.date.month}月${stat.date.day}日 · ${stat.words} 字',
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
@@ -463,13 +652,15 @@ class _Bar extends StatelessWidget {
           ),
         ],
       ),
+      ),
     );
   }
 }
 
 class _Heatmap extends StatelessWidget {
-  const _Heatmap({required this.data});
+  const _Heatmap({required this.data, this.onDayTap});
   final Map<String, int> data;
+  final ValueChanged<DateTime>? onDayTap;
 
   @override
   Widget build(BuildContext context) {
@@ -519,14 +710,28 @@ class _Heatmap extends StatelessWidget {
                       child: Column(
                         children: [
                           for (final day in week)
-                            Container(
-                              height: 11,
-                              margin: const EdgeInsets.all(1.2),
-                              decoration: BoxDecoration(
-                                color: day.isAfter(today)
-                                    ? Colors.transparent
-                                    : _color(c, data[dayKey(day)] ?? 0, max),
-                                borderRadius: BorderRadius.circular(2.2),
+                            Tooltip(
+                              message:
+                                  '${day.month}月${day.day}日 · ${data[dayKey(day)] ?? 0} 字',
+                              waitDuration: const Duration(milliseconds: 250),
+                              child: GestureDetector(
+                                onTap: day.isAfter(today)
+                                    ? null
+                                    : () => onDayTap?.call(day),
+                                child: Container(
+                                  height: 11,
+                                  margin: const EdgeInsets.all(1.2),
+                                  decoration: BoxDecoration(
+                                    color: day.isAfter(today)
+                                        ? Colors.transparent
+                                        : _color(
+                                            c,
+                                            data[dayKey(day)] ?? 0,
+                                            max,
+                                          ),
+                                    borderRadius: BorderRadius.circular(2.2),
+                                  ),
+                                ),
                               ),
                             ),
                         ],

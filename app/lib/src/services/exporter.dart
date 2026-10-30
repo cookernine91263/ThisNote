@@ -12,12 +12,13 @@ import '../data/models.dart';
 import '../data/repository.dart';
 import '../features/editor/huazi.dart';
 
-enum ExportFormat { docx, pdf, markdown, html, txt }
+enum ExportFormat { docx, pdf, png, markdown, html, txt }
 
 extension ExportFormatX on ExportFormat {
   String get label => switch (this) {
         ExportFormat.docx => 'Word 文档',
         ExportFormat.pdf => 'PDF',
+        ExportFormat.png => 'PNG 图片',
         ExportFormat.markdown => 'Markdown',
         ExportFormat.html => '网页 HTML',
         ExportFormat.txt => '纯文本',
@@ -26,6 +27,7 @@ extension ExportFormatX on ExportFormat {
   String get extension => switch (this) {
         ExportFormat.docx => 'docx',
         ExportFormat.pdf => 'pdf',
+        ExportFormat.png => 'png',
         ExportFormat.markdown => 'md',
         ExportFormat.html => 'html',
         ExportFormat.txt => 'txt',
@@ -34,6 +36,7 @@ extension ExportFormatX on ExportFormat {
   String get description => switch (this) {
         ExportFormat.docx => '保留标题、加粗、颜色与图片',
         ExportFormat.pdf => '适合打印与分享的固定版式',
+        ExportFormat.png => '一张排版好的长图，适合收藏与分享',
         ExportFormat.markdown => '通用纯文本格式，便于迁移',
         ExportFormat.html => '带排版的网页，可直接打开',
         ExportFormat.txt => '只要文字，不要格式',

@@ -117,7 +117,35 @@ class _AppShellState extends State<AppShell> with WindowListener {
                     width: 324,
                     child: const NoteListPanel(),
                   ),
-                  Expanded(child: main),
+                  Expanded(
+                    child: ClipRect(
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 280),
+                        reverseDuration: const Duration(milliseconds: 220),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        transitionBuilder: (child, animation) {
+                          final slide = Tween<Offset>(
+                            begin: const Offset(0.018, 0),
+                            end: Offset.zero,
+                          ).animate(animation);
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: slide,
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: KeyedSubtree(
+                          key: ValueKey(
+                            '${state.view}-${state.current?.id ?? 'desk'}',
+                          ),
+                          child: main,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),

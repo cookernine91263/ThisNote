@@ -430,6 +430,25 @@ class AppState extends ChangeNotifier {
 
   Future<void> setDailyGoal(int goal) => updateSettings((s) => s.dailyGoal = goal);
 
+  Future<void> saveColor(String hex) async {
+    final normalized = hex.toUpperCase();
+    await updateSettings((s) {
+      final next = <String>[
+        normalized,
+        ...s.savedColors.where((e) => e.toUpperCase() != normalized),
+      ];
+      s.savedColors = next.take(14).toList();
+    });
+  }
+
+  Future<void> removeSavedColor(String hex) async {
+    await updateSettings((s) {
+      s.savedColors = s.savedColors
+          .where((e) => e.toUpperCase() != hex.toUpperCase())
+          .toList();
+    });
+  }
+
   Future<bool> enableLock(String pin) async {
     final salt = _randomSalt();
     final hash = _hash(pin, salt);
