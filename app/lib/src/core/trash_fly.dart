@@ -15,16 +15,20 @@ class TrashFly {
     required String title,
     required Future<void> Function() after,
   }) async {
-    final overlay = Overlay.of(context, rootOverlay: true);
     final targetBox =
         targetKey.currentContext?.findRenderObject() as RenderBox?;
     final screen = MediaQuery.sizeOf(context);
     final end = targetBox != null
         ? targetBox.localToGlobal(targetBox.size.center(Offset.zero))
         : Offset(60, screen.height - 110);
-    late OverlayEntry entry;
-    entry = OverlayEntry(
-      builder: (_) => _TrashFlight(
+    await showGeneralDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      barrierLabel: 'trash',
+      barrierColor: Colors.transparent,
+      transitionDuration: Duration.zero,
+      pageBuilder: (dialogContext, _, __) => _TrashFlight(
         from: from,
         to: end,
         title: title,
@@ -32,11 +36,10 @@ class TrashFly {
           await after();
         },
         onClose: () {
-          if (entry.mounted) entry.remove();
+          Navigator.of(dialogContext, rootNavigator: true).pop();
         },
       ),
     );
-    overlay.insert(entry);
   }
 }
 
@@ -82,7 +85,7 @@ class _TrashFlightState extends State<_TrashFlight>
     super.initState();
     _controller.forward().whenComplete(() async {
       await widget.onDone();
-      widget.onClose();
+      if (mounted) widget.onClose();
     });
   }
 
@@ -100,73 +103,85 @@ class _TrashFlightState extends State<_TrashFlight>
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
-    return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: _curve,
-        builder: (context, _) {
-          final t = _curve.value;
-          final point = _point(t);
-          final scale = 1 - 0.76 * Curves.easeIn.transform(t);
-          return Positioned(
-            left: point.dx - _from.width / 2,
-            top: point.dy - _from.height / 2,
-            child: Opacity(
-              opacity: (1 - t * 0.72).clamp(0.0, 1.0),
-              child: Transform.rotate(
-                angle: -0.035 + 0.07 * t,
-                child: Transform.scale(
-                  scale: scale,
-                  child: Container(
-                    width: _from.width.clamp(160.0, 230.0),
-                    padding: const EdgeInsets.fromLTRB(13, 10, 11, 10),
-                    decoration: BoxDecoration(
-                      color: c.surface,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: c.accent.withValues(alpha: 0.3)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: c.shadow.withValues(alpha: 0.16),
-                          blurRadius: 18,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 24,
-                          height: 24,
+    return SizedBox.expand(
+      child: IgnorePointer(
+        child: AnimatedBuilder(
+          animation: _curve,
+          builder: (context, _) {
+            final t = _curve.value;
+            final point = _point(t);
+            final scale = 1 - 0.76 * Curves.easeIn.transform(t);
+            return Stack(
+              fit: StackFit.expand,
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  left: point.dx - _from.width / 2,
+                  top: point.dy - _from.height / 2,
+                  child: Opacity(
+                    opacity: (1 - t * 0.72).clamp(0.0, 1.0),
+                    child: Transform.rotate(
+                      angle: -0.035 + 0.07 * t,
+                      child: Transform.scale(
+                        scale: scale,
+                        child: Container(
+                          width: _from.width.clamp(160.0, 230.0),
+                          padding: const EdgeInsets.fromLTRB(13, 10, 11, 10),
                           decoration: BoxDecoration(
-                            color: c.accentSoft,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Icon(
-                            LucideIcons.feather,
-                            size: 12,
-                            color: c.accent,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            widget.title.trim().isEmpty ? '无题' : widget.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontFamily: 'NotoSansSC',
-                              fontSize: 10.5,
-                              color: c.ink,
+                            color: c.surface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: c.accent.withValues(alpha: 0.3),
                             ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: c.shadow.withValues(alpha: 0.16),
+                                blurRadius: 18,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: c.accentSoft,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Icon(
+                                  LucideIcons.feather,
+                                  size: 12,
+                                  color: c.accent,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  widget.title.trim().isEmpty
+                                      ? '无题'
+                                      : widget.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontFamily: 'NotoSansSC',
+                                    fontSize: 10.5,
+                                    color: c.ink,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
     );
   }

@@ -14,11 +14,7 @@ import 'folder_tree.dart';
 import 'new_note_sheet.dart';
 
 class NoteListPanel extends StatefulWidget {
-  const NoteListPanel({
-    super.key,
-    this.width = 324,
-    this.embedded = false,
-  });
+  const NoteListPanel({super.key, this.width = 324, this.embedded = false});
 
   final double width;
   final bool embedded;
@@ -42,7 +38,9 @@ class _NoteListPanelState extends State<NoteListPanel> {
   void _toggleSearch() {
     setState(() => _searching = !_searching);
     if (_searching) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _searchFocus.requestFocus());
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _searchFocus.requestFocus(),
+      );
     } else {
       _searchCtrl.clear();
       context.read<AppState>().setQuery('');
@@ -98,10 +96,14 @@ class _NoteListPanelState extends State<NoteListPanel> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  fontFamily: state.view == 'today' ? 'WenKai' : 'NotoSansSC',
+                                  fontFamily: state.view == 'today'
+                                      ? 'WenKai'
+                                      : 'NotoSansSC',
                                   fontSize: state.view == 'today' ? 24 : 20,
                                   fontWeight: FontWeight.w600,
-                                  letterSpacing: state.view == 'today' ? 1 : -0.2,
+                                  letterSpacing: state.view == 'today'
+                                      ? 1
+                                      : -0.2,
                                   color: c.ink,
                                   height: 1.2,
                                 ),
@@ -177,7 +179,11 @@ class _NoteListPanelState extends State<NoteListPanel> {
                           ),
                           child: Row(
                             children: [
-                              Icon(LucideIcons.search, size: 14, color: c.inkMuted),
+                              Icon(
+                                LucideIcons.search,
+                                size: 14,
+                                color: c.inkMuted,
+                              ),
                               const SizedBox(width: 7),
                               Expanded(
                                 child: TextField(
@@ -208,8 +214,7 @@ class _NoteListPanelState extends State<NoteListPanel> {
             ],
           ),
         ),
-        if (state.view == 'all')
-          FolderTree(state: state),
+        if (state.view == 'all') FolderTree(state: state),
         if (state.view == 'tags' && state.allTags.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 4, 18, 10),
@@ -250,9 +255,14 @@ class _NoteListPanelState extends State<NoteListPanel> {
                       onTap: () => state.setSort(s.$1),
                       child: AnimatedContainer(
                         duration: Motion.fast,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
-                          color: state.sort == s.$1 ? c.ink : Colors.transparent,
+                          color: state.sort == s.$1
+                              ? c.ink
+                              : Colors.transparent,
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
@@ -270,37 +280,73 @@ class _NoteListPanelState extends State<NoteListPanel> {
             ),
           ),
         Expanded(
-          child: list.isEmpty
-              ? _empty(context, state)
-              : Scrollbar(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(10, 2, 10, 20),
-                    itemCount: list.length,
-                    itemBuilder: (context, i) {
-                      final item = list[i];
-                      if (item is _GroupHeader) {
-                        return Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 14, 10, 7),
-                          child: Text(
-                            item.label,
-                            style: TextStyle(
-                              fontFamily: 'NotoSansSC',
-                              fontSize: 10,
-                              letterSpacing: 1.2,
-                              color: c.inkMuted,
-                            ),
-                          ),
-                        );
-                      }
-                      final note = item as NoteMeta;
-                      return NoteCard(
-                        meta: note,
-                        selected: state.current?.id == note.id,
-                        view: state.view,
-                      );
-                    },
-                  ),
+          child: AnimatedSwitcher(
+            key: ValueKey(
+              'list-${state.view}-${state.sort}-${state.folderFilter}-${state.tagFilter}',
+            ),
+            duration: const Duration(milliseconds: 250),
+            switchInCurve: Curves.easeOutCubic,
+            layoutBuilder: (current, previous) {
+              return ClipRect(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [...previous, if (current != null) current],
                 ),
+              );
+            },
+            transitionBuilder: (child, animation) {
+              final outgoing = animation.status == AnimationStatus.reverse;
+              return SlideTransition(
+                position:
+                    Tween<Offset>(
+                      begin: Offset(outgoing ? -0.085 : 0.085, 0),
+                      end: Offset.zero,
+                    ).animate(
+                      CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeOutCubic,
+                      ),
+                    ),
+                child: child,
+              );
+            },
+            child: KeyedSubtree(
+              key: ValueKey(
+                'list-inner-${state.view}-${state.sort}-${state.folderFilter}-${state.tagFilter}',
+              ),
+              child: list.isEmpty
+                  ? _empty(context, state)
+                  : Scrollbar(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(10, 2, 10, 20),
+                        itemCount: list.length,
+                        itemBuilder: (context, i) {
+                          final item = list[i];
+                          if (item is _GroupHeader) {
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(10, 14, 10, 7),
+                              child: Text(
+                                item.label,
+                                style: TextStyle(
+                                  fontFamily: 'NotoSansSC',
+                                  fontSize: 10,
+                                  letterSpacing: 1.2,
+                                  color: c.inkMuted,
+                                ),
+                              ),
+                            );
+                          }
+                          final note = item as NoteMeta;
+                          return NoteCard(
+                            meta: note,
+                            selected: state.current?.id == note.id,
+                            view: state.view,
+                          );
+                        },
+                      ),
+                    ),
+            ),
+          ),
         ),
         Container(
           decoration: BoxDecoration(
@@ -400,7 +446,9 @@ class _NoteListPanelState extends State<NoteListPanel> {
   }
 
   List<Object> _grouped(AppState state, List<NoteMeta> notes) {
-    if (state.view == 'today' || state.view == 'calendar' || state.view == 'trash') {
+    if (state.view == 'today' ||
+        state.view == 'calendar' ||
+        state.view == 'trash') {
       return notes;
     }
     final result = <Object>[];
@@ -412,10 +460,10 @@ class _NoteListPanelState extends State<NoteListPanel> {
       final label = key == today
           ? '今天'
           : key == yest
-              ? '昨天'
-              : (DateTime.now().difference(parseDay(key)).inDays < 7)
-                  ? '本周'
-                  : '${parseDay(key).year} 年 ${parseDay(key).month} 月';
+          ? '昨天'
+          : (DateTime.now().difference(parseDay(key)).inDays < 7)
+          ? '本周'
+          : '${parseDay(key).year} 年 ${parseDay(key).month} 月';
       if (label != current) {
         current = label;
         result.add(_GroupHeader(label));
@@ -494,208 +542,236 @@ class NoteCard extends StatelessWidget {
     final mood = MoodX.fromScore(meta.mood);
     return DragTarget<String>(
       onWillAcceptWithDetails: (details) =>
-          details.data.startsWith('note:') &&
-          details.data != 'note:${meta.id}',
+          details.data.startsWith('note:') && details.data != 'note:${meta.id}',
       onAcceptWithDetails: (details) async {
         if (details.data.startsWith('note:')) {
-          await state.reorderNote(
-            details.data.substring(5),
-            meta.id,
-          );
+          await state.reorderNote(details.data.substring(5), meta.id);
         }
       },
       builder: (context, candidate, rejected) {
         final hot = candidate.isNotEmpty;
         return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: HoverBuilder(
-        builder: (context, hovered, t) {
-          final bg = selected
-              ? c.accentSoft
-              : hovered
+          padding: const EdgeInsets.only(bottom: 4),
+          child: HoverBuilder(
+            builder: (context, hovered, t) {
+              final bg = selected
+                  ? c.accentSoft
+                  : hovered
                   ? c.paper
                   : Colors.transparent;
-          return GestureDetector(
-            onTap: () {
-              if (view == 'trash') {
-                _showTrashPreview(context, state, meta);
-              } else {
-                state.openNote(meta.id);
-              }
-            },
-            onSecondaryTapDown: (details) =>
-                _showContextMenu(context, state, meta, details.globalPosition),
-            child: AnimatedContainer(
-              duration: Motion.fast,
-              curve: Motion.enter,
-              padding: const EdgeInsets.fromLTRB(12, 11, 10, 10),
-              decoration: BoxDecoration(
-                color: bg,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: hot
-                      ? c.accent.withValues(alpha: 0.55)
-                      : selected
+              return GestureDetector(
+                onTap: () {
+                  if (view == 'trash') {
+                    _showTrashPreview(context, state, meta);
+                  } else {
+                    state.openNote(meta.id);
+                  }
+                },
+                onSecondaryTapDown: (details) => _showContextMenu(
+                  context,
+                  state,
+                  meta,
+                  details.globalPosition,
+                ),
+                child: AnimatedContainer(
+                  duration: Motion.fast,
+                  curve: Motion.enter,
+                  padding: const EdgeInsets.fromLTRB(12, 11, 10, 10),
+                  decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: hot
+                          ? c.accent.withValues(alpha: 0.55)
+                          : selected
                           ? c.accent.withValues(alpha: 0.25)
                           : hovered
-                              ? c.line
-                              : Colors.transparent,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+                          ? c.line
+                          : Colors.transparent,
+                    ),
+                  ),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (meta.pinned)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 3, right: 5),
-                          child: Icon(LucideIcons.pin, size: 11, color: c.accent),
-                        ),
-                      Expanded(
-                        child: Text(
-                          meta.title.trim().isEmpty ? '无题' : meta.title.trim(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontFamily: 'NotoSansSC',
-                            fontSize: 13.5,
-                            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                            color: c.ink,
-                            height: 1.35,
-                          ),
-                        ),
-                      ),
-                      if (hovered || selected)
-                        GestureDetector(
-                          onTapDown: (d) =>
-                              _showContextMenu(context, state, meta, d.globalPosition),
-                          child: Padding(
-                            padding: const EdgeInsets.only(left: 4, top: 1),
-                            child: Icon(
-                              LucideIcons.ellipsis,
-                              size: 15,
-                              color: c.inkMuted,
-                            ),
-                          ),
-                        ),
-                      if (view != 'trash')
-                      Draggable<String>(
-                        data: 'note:${meta.id}',
-                        feedback: Material(
-                          color: Colors.transparent,
-                          child: _NoteGhost(meta: meta),
-                        ),
-                        childWhenDragging: Opacity(
-                          opacity: 0.35,
-                          child: Icon(
-                            LucideIcons.gripVertical,
-                            size: 14,
-                            color: c.inkMuted,
-                          ),
-                        ),
-                        child: Tooltip(
-                          message: '拖动排序 / 拖进文件夹',
-                          child: MouseRegion(
-                            cursor: SystemMouseCursors.grab,
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 3, top: 1),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (meta.pinned)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 3, right: 5),
                               child: Icon(
-                                LucideIcons.gripVertical,
-                                size: 14,
-                                color: hot ? c.accent : c.inkMuted,
+                                LucideIcons.pin,
+                                size: 11,
+                                color: c.accent,
+                              ),
+                            ),
+                          Expanded(
+                            child: Text(
+                              meta.title.trim().isEmpty
+                                  ? '无题'
+                                  : meta.title.trim(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontFamily: 'NotoSansSC',
+                                fontSize: 13.5,
+                                fontWeight: selected
+                                    ? FontWeight.w600
+                                    : FontWeight.w500,
+                                color: c.ink,
+                                height: 1.35,
                               ),
                             ),
                           ),
-                        ),
+                          if (hovered || selected)
+                            GestureDetector(
+                              onTapDown: (d) => _showContextMenu(
+                                context,
+                                state,
+                                meta,
+                                d.globalPosition,
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 4, top: 1),
+                                child: Icon(
+                                  LucideIcons.ellipsis,
+                                  size: 15,
+                                  color: c.inkMuted,
+                                ),
+                              ),
+                            ),
+                          if (view != 'trash')
+                            Draggable<String>(
+                              data: 'note:${meta.id}',
+                              feedback: Material(
+                                color: Colors.transparent,
+                                child: _NoteGhost(meta: meta),
+                              ),
+                              childWhenDragging: Opacity(
+                                opacity: 0.35,
+                                child: Icon(
+                                  LucideIcons.gripVertical,
+                                  size: 14,
+                                  color: c.inkMuted,
+                                ),
+                              ),
+                              child: Tooltip(
+                                message: '拖动排序 / 拖进文件夹',
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.grab,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(
+                                      left: 3,
+                                      top: 1,
+                                    ),
+                                    child: Icon(
+                                      LucideIcons.gripVertical,
+                                      size: 14,
+                                      color: hot ? c.accent : c.inkMuted,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    meta.excerpt.isEmpty ? '还没有写下正文' : meta.excerpt,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: 'NotoSansSC',
-                      fontSize: 11.5,
-                      height: 1.6,
-                      color: meta.excerpt.isEmpty ? c.inkMuted : c.inkSoft,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  Row(
-                    children: [
-                      Icon(kindIcon(meta.kind), size: 10, color: c.inkMuted),
-                      const SizedBox(width: 4),
+                      const SizedBox(height: 4),
                       Text(
-                        shortDate(meta.createdAt),
+                        meta.excerpt.isEmpty ? '还没有写下正文' : meta.excerpt,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontFamily: 'NotoSansSC',
-                          fontSize: 9.5,
-                          color: c.inkMuted,
+                          fontSize: 11.5,
+                          height: 1.6,
+                          color: meta.excerpt.isEmpty ? c.inkMuted : c.inkSoft,
                         ),
                       ),
-                      const SizedBox(width: 7),
-                      Dot(size: 2, color: c.lineStrong),
-                      const SizedBox(width: 7),
-                      Text(
-                        '${meta.words} 字',
-                        style: TextStyle(
-                          fontFamily: 'NotoSansSC',
-                          fontSize: 9.5,
-                          color: c.inkMuted,
-                        ),
-                      ),
-                      if (mood != null) ...[
-                        const SizedBox(width: 7),
-                        Text(
-                          mood.emoji,
-                          style: TextStyle(
-                            fontFamily: 'NotoSansSC',
-                            fontSize: 10,
-                            color: mood.color,
+                      const SizedBox(height: 7),
+                      Row(
+                        children: [
+                          Icon(
+                            kindIcon(meta.kind),
+                            size: 10,
+                            color: c.inkMuted,
                           ),
-                        ),
-                      ],
-                      const Spacer(),
-                      if (meta.favorite)
-                        Icon(LucideIcons.heart, size: 10, color: c.accent),
-                      if (meta.tags.isNotEmpty) ...[
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            meta.tags.take(2).map((e) => '#$e').join(' '),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          const SizedBox(width: 4),
+                          Text(
+                            shortDate(meta.createdAt),
                             style: TextStyle(
                               fontFamily: 'NotoSansSC',
-                              fontSize: 9,
+                              fontSize: 9.5,
                               color: c.inkMuted,
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 7),
+                          Dot(size: 2, color: c.lineStrong),
+                          const SizedBox(width: 7),
+                          Text(
+                            '${meta.words} 字',
+                            style: TextStyle(
+                              fontFamily: 'NotoSansSC',
+                              fontSize: 9.5,
+                              color: c.inkMuted,
+                            ),
+                          ),
+                          if (mood != null) ...[
+                            const SizedBox(width: 7),
+                            Text(
+                              mood.emoji,
+                              style: TextStyle(
+                                fontFamily: 'NotoSansSC',
+                                fontSize: 10,
+                                color: mood.color,
+                              ),
+                            ),
+                          ],
+                          const Spacer(),
+                          if (meta.favorite)
+                            Icon(LucideIcons.heart, size: 10, color: c.accent),
+                          if (meta.tags.isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                meta.tags.take(2).map((e) => '#$e').join(' '),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontFamily: 'NotoSansSC',
+                                  fontSize: 9,
+                                  color: c.inkMuted,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ],
                   ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
+                ),
+              );
+            },
+          ),
         );
       },
     );
   }
 
   void _showContextMenu(
-      BuildContext context, AppState state, NoteMeta meta, Offset position) {
+    BuildContext context,
+    AppState state,
+    NoteMeta meta,
+    Offset position,
+  ) {
     final c = AppPalette.of(context);
     showMenu<String>(
       context: context,
-      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx, position.dy),
+      position: RelativeRect.fromLTRB(
+        position.dx,
+        position.dy,
+        position.dx,
+        position.dy,
+      ),
       color: c.surface,
       items: [
         PopupMenuItem(value: 'pin', child: Text(meta.pinned ? '取消置顶' : '置顶')),
@@ -741,8 +817,13 @@ class NoteCard extends StatelessWidget {
           await state.restoreNote(meta.id);
           break;
         case 'purge':
-          if (await showConfirm(context,
-              title: '永久删除？', message: '这篇文字将无法恢复。', danger: true, confirmLabel: '删除')) {
+          if (await showConfirm(
+            context,
+            title: '永久删除？',
+            message: '这篇文字将无法恢复。',
+            danger: true,
+            confirmLabel: '删除',
+          )) {
             await state.purgeNote(meta.id);
           }
           break;
@@ -823,11 +904,13 @@ class NoteCard extends StatelessWidget {
                   children: [
                     TextButton(
                       onPressed: () async {
-                        if (await showConfirm(context,
-                            title: '永久删除？',
-                            message: '这篇文字将无法恢复。',
-                            danger: true,
-                            confirmLabel: '删除')) {
+                        if (await showConfirm(
+                          context,
+                          title: '永久删除？',
+                          message: '这篇文字将无法恢复。',
+                          danger: true,
+                          confirmLabel: '删除',
+                        )) {
                           await state.purgeNote(meta.id);
                           if (context.mounted) Navigator.of(context).pop();
                         }

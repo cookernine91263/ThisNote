@@ -46,6 +46,8 @@ class ThemeReveal {
         return;
       }
       await apply();
+      // 等新主题真正画出一帧，再让旧截图下面透出新主题。
+      await Future<void>.delayed(const Duration(milliseconds: 24));
       if (!context.mounted) return;
       await showGeneralDialog<void>(
         context: context,
