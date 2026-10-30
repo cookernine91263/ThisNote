@@ -20,50 +20,63 @@ class ThisNoteApp extends StatelessWidget {
     final state = context.watch<AppState>();
     final settings = state.settings;
     const scale = 1.0;
-    return RepaintBoundary(
-      key: ThemeReveal.rootKey,
-      child: MaterialApp(
-      title: '此记 · ThisNote',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.build(
-        Brightness.light,
-        scale,
-        accent: settings.accent,
-      ),
-      darkTheme: AppTheme.build(
-        Brightness.dark,
-        scale,
-        accent: settings.accent,
-      ),
-      themeMode: settings.themeMode,
-      locale: const Locale('zh', 'CN'),
-      supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
-      localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      scrollBehavior: const _AppScrollBehavior(),
-      builder: (context, child) {
-        final media = MediaQuery.of(context);
-        return MediaQuery(
-          data: media.copyWith(
-            textScaler: TextScaler.linear(scale),
+    return ValueListenableBuilder<bool>(
+      valueListenable: ThemeReveal.revealing,
+      builder: (context, revealing, _) => RepaintBoundary(
+        key: ThemeReveal.rootKey,
+        child: MaterialApp(
+          title: '此记 · ThisNote',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.build(
+            Brightness.light,
+            scale,
+            accent: settings.accent,
           ),
-          child: AnnotatedRegion<SystemUiOverlayStyle>(
-            value: SystemUiOverlayStyle(
-              statusBarColor: Colors.transparent,
-              statusBarIconBrightness:
-                  Theme.of(context).brightness == Brightness.dark
-                      ? Brightness.light
-                      : Brightness.dark,
-              systemNavigationBarColor: AppPalette.of(context).paper,
-              systemNavigationBarIconBrightness:
-                  Theme.of(context).brightness == Brightness.dark
-                      ? Brightness.light
-                      : Brightness.dark,
-            ),
-            child: child!,
+          darkTheme: AppTheme.build(
+            Brightness.dark,
+            scale,
+            accent: settings.accent,
           ),
-        );
-      },
-      home: const _AppGate(),
+          themeMode: settings.themeMode,
+          // 圆孔揭示自己负责这次过渡；再叠一层颜色渐变，
+          // 圆孔边缘就会透出还没稳定的颜色。
+          themeAnimationDuration:
+              revealing ? Duration.zero : kThemeAnimationDuration,
+          locale: const Locale('zh', 'CN'),
+          supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          scrollBehavior: const _AppScrollBehavior(),
+          builder: (context, child) {
+            final media = MediaQuery.of(context);
+            return MediaQuery(
+              data: media.copyWith(
+                textScaler: TextScaler.linear(scale),
+              ),
+              child: AnnotatedRegion<SystemUiOverlayStyle>(
+                value: SystemUiOverlayStyle(
+                  statusBarColor: Colors.transparent,
+                  statusBarIconBrightness:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? Brightness.light
+                          : Brightness.dark,
+                  systemNavigationBarColor: AppPalette.of(context).paper,
+                  systemNavigationBarIconBrightness:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? Brightness.light
+                          : Brightness.dark,
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    child!,
+                    ThemeReveal.overlay(),
+                  ],
+                ),
+              ),
+            );
+          },
+          home: const _AppGate(),
+        ),
       ),
     );
   }
