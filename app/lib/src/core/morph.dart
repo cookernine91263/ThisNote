@@ -124,7 +124,9 @@ class _MorphSession {
   String inSlot = 'b';
 
   Set<String> _leaving = {};
-  Set<String> _paired = {};
+
+  /// 新块 -> 旧块。同名优先，剩下的按位置和尺寸就近配对。
+  Map<String, String> _pairs = {};
   _Phase _phase = _Phase.idle;
 
   bool get running => _phase == _Phase.morph || _phase == _Phase.crossFade;
@@ -132,7 +134,7 @@ class _MorphSession {
 
   void begin(Set<String> leaving) {
     _leaving = leaving;
-    _paired = {};
+    _pairs = {};
     _phase = _Phase.pending;
     outSlot = inSlot;
     inSlot = inSlot == 'a' ? 'b' : 'a';
@@ -141,16 +143,66 @@ class _MorphSession {
 
   void start() {
     if (_phase != _Phase.pending) return;
-    _paired = _leaving.where(keys[inSlot]!.containsKey).toSet();
-    _phase = _paired.isEmpty ? _Phase.crossFade : _Phase.morph;
+    _pairs = _buildPairs();
+    _phase = _pairs.isEmpty ? _Phase.crossFade : _Phase.morph;
     controller
       ..value = 0
       ..forward();
   }
 
+  /// 先让同名的块对上，剩下的按“离得近、块头差不多”自动配对——
+  /// PPT 的平滑也是这么找对应物的，大多数元素都能动起来。
+  Map<String, String> _buildPairs() {
+    final out = <String, Rect>{};
+    for (final tag in _leaving) {
+      final rect = _rectOf(keys[outSlot]![tag]);
+      if (rect != null) out[tag] = rect;
+    }
+    final incoming = <String, Rect>{};
+    for (final tag in keys[inSlot]!.keys) {
+      final rect = _rectOf(keys[inSlot]![tag]);
+      if (rect != null) incoming[tag] = rect;
+    }
+
+    final pairs = <String, String>{};
+    final used = <String>{};
+    for (final tag in incoming.keys) {
+      if (out.containsKey(tag)) {
+        pairs[tag] = tag;
+        used.add(tag);
+      }
+    }
+    final diagonal = _pageSize().longestSide;
+    for (final entry in incoming.entries) {
+      if (pairs.containsKey(entry.key)) continue;
+      String? best;
+      var bestDistance = double.infinity;
+      for (final candidate in out.entries) {
+        if (used.contains(candidate.key)) continue;
+        if (!_similar(entry.value, candidate.value)) continue;
+        final distance = (entry.value.center - candidate.value.center).distance;
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = candidate.key;
+        }
+      }
+      if (best != null && bestDistance < diagonal * 0.55) {
+        pairs[entry.key] = best;
+        used.add(best);
+      }
+    }
+    return pairs;
+  }
+
+  Size _pageSize() {
+    final root = rootKey.currentContext?.findRenderObject();
+    if (root is RenderBox && root.hasSize) return root.size;
+    return const Size(1200, 800);
+  }
+
   void finish() {
     _phase = _Phase.idle;
-    _paired = {};
+    _pairs = {};
     _leaving = {};
     controller
       ..stop()
@@ -176,10 +228,11 @@ class _MorphSession {
     }
   }
 
-  /// 这一对块值不值得飞过去：标签要对上，尺寸也不能差太多。
+  /// 这一对块值不值得飞过去：配上了，尺寸也不能差太多。
   bool _canFly(String tag) {
-    if (!_paired.contains(tag)) return false;
-    final a = _rectOf(keys[outSlot]![tag]);
+    final source = _pairs[tag];
+    if (source == null) return false;
+    final a = _rectOf(keys[outSlot]![source]);
     final b = _rectOf(keys[inSlot]![tag]);
     if (a == null || b == null) return false;
     if (a.width <= 0 || a.height <= 0 || b.width <= 0 || b.height <= 0) {
@@ -188,25 +241,26 @@ class _MorphSession {
     return _similar(a, b);
   }
 
-  /// 旧块：对接上的立刻让位——新块已经顶在同一个位置上了。
+  /// 旧块：被别的新块顶替的，立刻让位；没人接的，自己淡出。
   Widget decorateOutgoing(String tag, Widget child) {
     if (_phase == _Phase.idle || _phase == _Phase.pending) return child;
     final t = _t;
-    if (_canFly(tag)) {
-      return Opacity(opacity: 1 - _ramp(t, 0, 0.1), child: child);
+    if (_pairs.values.contains(tag)) {
+      return Opacity(opacity: 1 - _ramp(t, 0, 0.06), child: child);
     }
-    return Opacity(opacity: 1 - _ramp(t, 0, 0.42), child: child);
+    return Opacity(opacity: 1 - _ramp(t, 0, 0.28), child: child);
   }
 
-  /// 新块：从旧块的位置、尺寸飞回自己的位置，途中一直显示新的内容。
+  /// 新块：从配上的旧块的位置、尺寸飞回自己的位置，途中一直显示新的内容。
   Widget decorateIncoming(String tag, Widget child) {
     if (_phase == _Phase.idle || _phase == _Phase.pending) return child;
     final t = _t;
     if (_phase == _Phase.crossFade) return child;
     final own = _rectOf(keys[inSlot]![tag]);
-    final from = _canFly(tag) ? _rectOf(keys[outSlot]![tag]) : null;
+    final source = _pairs[tag];
+    final from = _canFly(tag) ? _rectOf(keys[outSlot]![source!]) : null;
     if (own == null || from == null) {
-      return Opacity(opacity: _ramp(t, 0.32, 0.86), child: child);
+      return Opacity(opacity: _ramp(t, 0.45, 0.92), child: child);
     }
     final rect = Rect.lerp(from, own, t)!;
     final matrix = Matrix4.identity()
