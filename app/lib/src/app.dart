@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'core/theme.dart';
+import 'core/theme_reveal.dart';
 import 'features/lock_screen.dart';
 import 'features/onboarding.dart';
 import 'features/shell.dart';
@@ -19,8 +20,10 @@ class ThisNoteApp extends StatelessWidget {
     final state = context.watch<AppState>();
     final settings = state.settings;
     const scale = 1.0;
-    return MaterialApp(
-      title: '姝よ 路 ThisNote',
+    return RepaintBoundary(
+      key: ThemeReveal.rootKey,
+      child: MaterialApp(
+      title: '此记 · ThisNote',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.build(
         Brightness.light,
@@ -61,6 +64,7 @@ class ThisNoteApp extends StatelessWidget {
         );
       },
       home: const _AppGate(),
+      ),
     );
   }
 }

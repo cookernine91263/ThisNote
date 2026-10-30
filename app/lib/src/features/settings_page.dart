@@ -15,6 +15,7 @@ import '../core/format.dart';
 import '../core/motion.dart';
 import '../core/motion_choice.dart';
 import '../core/theme.dart';
+import '../core/theme_reveal.dart';
 import '../core/ui.dart';
 import '../state/app_state.dart';
 import 'editor/color_picker.dart';
@@ -82,7 +83,12 @@ class SettingsPage extends StatelessWidget {
                             selected: s.themeMode == entry.$1,
                             icon: entry.$2,
                             label: entry.$3,
-                            onTap: () => state.setThemeMode(entry.$1),
+                            onTap: () {},
+                            onTapPosition: (origin) => ThemeReveal.reveal(
+                              context: context,
+                              globalOrigin: origin,
+                              apply: () => state.setThemeMode(entry.$1),
+                            ),
                           ),
                         ),
                     ],
@@ -257,6 +263,10 @@ class SettingsPage extends StatelessWidget {
                     min: 0.85,
                     max: 1.3,
                     display: '${(17 * s.editorScale).round()} px',
+                    suffix: 'px',
+                    decimals: 0,
+                    transform: (v) => 17 * v,
+                    inverse: (v) => v / 17,
                     onChanged: (v) => state.updateSettings((x) => x.editorScale = v),
                   ),
                   _SliderSetting(
@@ -265,6 +275,8 @@ class SettingsPage extends StatelessWidget {
                     min: 1.5,
                     max: 2.3,
                     display: s.lineHeight.toStringAsFixed(2),
+                    decimals: 2,
+                    snap: 0.05,
                     onChanged: (v) => state.updateSettings((x) => x.lineHeight = v),
                   ),
                   _SliderSetting(
@@ -273,6 +285,9 @@ class SettingsPage extends StatelessWidget {
                     min: 600,
                     max: 920,
                     display: '${s.editorWidth.round()} px',
+                    suffix: 'px',
+                    decimals: 0,
+                    snap: 10,
                     onChanged: (v) => state.updateSettings((x) => x.editorWidth = v),
                   ),
                   const SizedBox(height: 8),
@@ -328,6 +343,9 @@ class SettingsPage extends StatelessWidget {
                     max: 3000,
                     divisions: 29,
                     display: '${s.dailyGoal} 字',
+                    suffix: '字',
+                    decimals: 0,
+                    snap: 50,
                     onChanged: (v) => state.setDailyGoal(v.round()),
                   ),
                   const SizedBox(height: 4),
@@ -843,16 +861,21 @@ class _Choice extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.onTapPosition,
   });
   final bool selected;
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final ValueChanged<Offset>? onTapPosition;
 
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     return GestureDetector(
+      onTapUp: onTapPosition == null
+          ? null
+          : (details) => onTapPosition!(details.globalPosition),
       onTap: onTap,
       child: AnimatedContainer(
         duration: Motion.fast,
@@ -890,6 +913,11 @@ class _SliderSetting extends StatelessWidget {
     required this.display,
     required this.onChanged,
     this.divisions,
+    this.suffix = '',
+    this.decimals = 0,
+    this.snap,
+    this.transform,
+    this.inverse,
   });
 
   final String label;
@@ -898,6 +926,11 @@ class _SliderSetting extends StatelessWidget {
   final double max;
   final int? divisions;
   final String display;
+  final String suffix;
+  final int decimals;
+  final double? snap;
+  final double Function(double)? transform;
+  final double Function(double)? inverse;
   final ValueChanged<double> onChanged;
 
   @override
@@ -938,20 +971,145 @@ class _SliderSetting extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(
-            width: 64,
+          _NumberField(
+            value: value,
+            min: min,
+            max: max,
+            suffix: suffix,
+            decimals: decimals,
+            snap: snap,
+            transform: transform,
+            inverse: inverse,
+            onSubmitted: (v) => onChanged(v),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NumberField extends StatefulWidget {
+  const _NumberField({
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.suffix,
+    required this.decimals,
+    required this.onSubmitted,
+    this.snap,
+    this.transform,
+    this.inverse,
+  });
+
+  final double value;
+  final double min;
+  final double max;
+  final String suffix;
+  final int decimals;
+  final double? snap;
+  final double Function(double)? transform;
+  final double Function(double)? inverse;
+  final ValueChanged<double> onSubmitted;
+
+  @override
+  State<_NumberField> createState() => _NumberFieldState();
+}
+
+class _NumberFieldState extends State<_NumberField> {
+  late final TextEditingController _controller =
+      TextEditingController(text: _format(widget.value));
+  late final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!_focus.hasFocus) _commit();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _NumberField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_focus.hasFocus && widget.value != oldWidget.value) {
+      _controller.text = _format(widget.value);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  String _format(double value) {
+    final shown = widget.transform?.call(value) ?? value;
+    return shown.toStringAsFixed(widget.decimals);
+  }
+
+  void _commit() {
+    var parsed = double.tryParse(_controller.text.trim());
+    if (parsed == null) {
+      _controller.text = _format(widget.value);
+      return;
+    }
+    if (widget.snap != null && widget.snap! > 0) {
+      parsed = (parsed / widget.snap!).round() * widget.snap!;
+    }
+    var internal = widget.inverse?.call(parsed) ?? parsed;
+    internal = internal.clamp(widget.min, widget.max).toDouble();
+    widget.onSubmitted(internal);
+    _controller.text = _format(internal);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 48,
+          child: TextField(
+            controller: _controller,
+            focusNode: _focus,
+            keyboardType: TextInputType.numberWithOptions(
+              decimal: widget.decimals > 0,
+            ),
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontFamily: 'NotoSansSC',
+              fontSize: 10,
+              color: c.ink,
+            ),
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 5),
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: c.line),
+              ),
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: c.accent),
+              ),
+            ),
+            onSubmitted: (_) => _commit(),
+            onTapOutside: (_) => _focus.unfocus(),
+          ),
+        ),
+        if (widget.suffix.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 3),
             child: Text(
-              display,
-              textAlign: TextAlign.right,
+              widget.suffix,
               style: TextStyle(
                 fontFamily: 'NotoSansSC',
-                fontSize: 9.5,
+                fontSize: 9,
                 color: c.inkMuted,
               ),
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 }

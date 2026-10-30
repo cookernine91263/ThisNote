@@ -5,10 +5,12 @@ import 'package:provider/provider.dart';
 import '../core/format.dart';
 import '../core/icons.dart';
 import '../core/motion.dart';
+import '../core/trash_fly.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../data/models.dart';
 import '../state/app_state.dart';
+import 'folder_tree.dart';
 import 'new_note_sheet.dart';
 
 class NoteListPanel extends StatefulWidget {
@@ -51,9 +53,12 @@ class _NoteListPanelState extends State<NoteListPanel> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final c = AppPalette.of(context);
+    final folderName = state.folderFilter == '__unfiled__'
+        ? '未分类'
+        : state.folderById(state.folderFilter)?.name;
     final title = switch (state.view) {
       'today' => '今日',
-      'all' => '全部笔记',
+      'all' => folderName ?? '全部笔记',
       'tags' => state.tagFilter == null ? '标签' : '# ${state.tagFilter}',
       'trash' => '回收站',
       'search' => '搜索',
@@ -65,7 +70,7 @@ class _NoteListPanelState extends State<NoteListPanel> {
       'tags' => state.tagFilter == null ? '按标签整理你的文字' : '与这个标签有关的文字',
       'trash' => '删除的文字会在这里保留',
       'search' => '搜索标题、正文与标签',
-      'all' => '所有写下的日子',
+      'all' => state.folderFilter == null ? '所有写下的日子' : '文件夹里的文字',
       _ => '',
     };
     final notes = state.visibleNotes;
@@ -203,6 +208,8 @@ class _NoteListPanelState extends State<NoteListPanel> {
             ],
           ),
         ),
+        if (state.view == 'all')
+          FolderTree(state: state),
         if (state.view == 'tags' && state.allTags.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 4, 18, 10),
@@ -235,6 +242,7 @@ class _NoteListPanelState extends State<NoteListPanel> {
                   ('created', '创建'),
                   ('title', '标题'),
                   ('words', '字数'),
+                  ('manual', '手动'),
                 ])
                   Padding(
                     padding: const EdgeInsets.only(right: 2),
@@ -418,6 +426,50 @@ class _NoteListPanelState extends State<NoteListPanel> {
   }
 }
 
+class _NoteGhost extends StatelessWidget {
+  const _NoteGhost({required this.meta});
+  final NoteMeta meta;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return Container(
+      width: 220,
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: c.accent.withValues(alpha: 0.35)),
+        boxShadow: [
+          BoxShadow(
+            color: c.shadow.withValues(alpha: 0.18),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Icon(LucideIcons.feather, size: 14, color: c.accent),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              meta.title.trim().isEmpty ? '无题' : meta.title.trim(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'NotoSansSC',
+                fontSize: 11,
+                color: c.ink,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _GroupHeader {
   const _GroupHeader(this.label);
   final String label;
@@ -440,7 +492,21 @@ class NoteCard extends StatelessWidget {
     final c = AppPalette.of(context);
     final state = context.read<AppState>();
     final mood = MoodX.fromScore(meta.mood);
-    return Padding(
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) =>
+          details.data.startsWith('note:') &&
+          details.data != 'note:${meta.id}',
+      onAcceptWithDetails: (details) async {
+        if (details.data.startsWith('note:')) {
+          await state.reorderNote(
+            details.data.substring(5),
+            meta.id,
+          );
+        }
+      },
+      builder: (context, candidate, rejected) {
+        final hot = candidate.isNotEmpty;
+        return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: HoverBuilder(
         builder: (context, hovered, t) {
@@ -467,11 +533,13 @@ class NoteCard extends StatelessWidget {
                 color: bg,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: selected
-                      ? c.accent.withValues(alpha: 0.25)
-                      : hovered
-                          ? c.line
-                          : Colors.transparent,
+                  color: hot
+                      ? c.accent.withValues(alpha: 0.55)
+                      : selected
+                          ? c.accent.withValues(alpha: 0.25)
+                          : hovered
+                              ? c.line
+                              : Colors.transparent,
                 ),
               ),
               child: Column(
@@ -512,6 +580,36 @@ class NoteCard extends StatelessWidget {
                             ),
                           ),
                         ),
+                      if (view != 'trash')
+                      Draggable<String>(
+                        data: 'note:${meta.id}',
+                        feedback: Material(
+                          color: Colors.transparent,
+                          child: _NoteGhost(meta: meta),
+                        ),
+                        childWhenDragging: Opacity(
+                          opacity: 0.35,
+                          child: Icon(
+                            LucideIcons.gripVertical,
+                            size: 14,
+                            color: c.inkMuted,
+                          ),
+                        ),
+                        child: Tooltip(
+                          message: '拖动排序 / 拖进文件夹',
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.grab,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 3, top: 1),
+                              child: Icon(
+                                LucideIcons.gripVertical,
+                                size: 14,
+                                color: hot ? c.accent : c.inkMuted,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -587,6 +685,8 @@ class NoteCard extends StatelessWidget {
           );
         },
       ),
+        );
+      },
     );
   }
 
@@ -619,7 +719,23 @@ class NoteCard extends StatelessWidget {
           await state.toggleFavorite(meta);
           break;
         case 'trash':
-          await state.trashNote(meta.id);
+          final box = context.findRenderObject() as RenderBox?;
+          final from = box != null
+              ? box.localToGlobal(Offset.zero) & box.size
+              : Rect.fromCenter(
+                  center: Offset(
+                    MediaQuery.sizeOf(context).width / 2,
+                    MediaQuery.sizeOf(context).height / 2,
+                  ),
+                  width: 200,
+                  height: 60,
+                );
+          await TrashFly.fly(
+            context: context,
+            from: from,
+            title: meta.title,
+            after: () => state.trashNote(meta.id),
+          );
           break;
         case 'restore':
           await state.restoreNote(meta.id);

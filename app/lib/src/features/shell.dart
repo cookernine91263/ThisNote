@@ -8,6 +8,8 @@ import 'package:window_manager/window_manager.dart';
 
 import '../core/motion.dart';
 import '../core/theme.dart';
+import '../core/theme_reveal.dart';
+import '../core/trash_fly.dart';
 import '../core/ui.dart';
 import '../state/app_state.dart';
 import 'calendar_page.dart';
@@ -116,11 +118,18 @@ class _AppShellState extends State<AppShell> with WindowListener {
                   _AnimatedWidth(
                     visible: !zen && showList,
                     width: 324,
+                    duration: morph
+                        ? const Duration(milliseconds: 430)
+                        : Motion.base,
+                    curve: morph ? Curves.easeInOutCubic : Motion.spring,
                     child: const NoteListPanel(),
                   ),
                   Expanded(
-                    child: ClipRect(
+                    child: ColoredBox(
+                      color: AppPalette.of(context).paper,
+                      child: ClipRect(
                       child: AnimatedSwitcher(
+                        key: ValueKey('motion-${state.settings.motionStyle}'),
                         duration: Duration(milliseconds: morph ? 430 : 280),
                         reverseDuration:
                             Duration(milliseconds: morph ? 360 : 220),
@@ -130,6 +139,8 @@ class _AppShellState extends State<AppShell> with WindowListener {
                         switchOutCurve: morph
                             ? Curves.easeInOutCubic
                             : Curves.easeInCubic,
+                        layoutBuilder: (current, previous) =>
+                            current ?? const SizedBox.shrink(),
                         transitionBuilder: (child, animation) {
                           if (morph) {
                             final curve = CurvedAnimation(
@@ -173,6 +184,7 @@ class _AppShellState extends State<AppShell> with WindowListener {
                           ),
                           child: main,
                         ),
+                      ),
                       ),
                     ),
                   ),
@@ -321,17 +333,21 @@ class _AnimatedWidth extends StatelessWidget {
     required this.visible,
     required this.width,
     required this.child,
+    this.duration = Motion.base,
+    this.curve = Motion.spring,
   });
   final bool visible;
   final double width;
   final Widget child;
+  final Duration duration;
+  final Curve curve;
 
   @override
   Widget build(BuildContext context) {
     return ClipRect(
       child: AnimatedContainer(
-        duration: Motion.base,
-        curve: Motion.spring,
+        duration: duration,
+        curve: curve,
         width: visible ? width : 0,
         child: OverflowBox(
           alignment: Alignment.centerLeft,
@@ -427,17 +443,23 @@ class _Rail extends StatelessWidget {
                     : LucideIcons.sunMoon,
             label: '外观',
             active: false,
-            onTap: () {
+            onTap: () {},
+            onTapPosition: (origin) {
               final next = switch (state.settings.themeMode) {
                 ThemeMode.system => ThemeMode.light,
                 ThemeMode.light => ThemeMode.dark,
                 ThemeMode.dark => ThemeMode.system,
               };
-              state.setThemeMode(next);
+              ThemeReveal.reveal(
+                context: context,
+                globalOrigin: origin,
+                apply: () => state.setThemeMode(next),
+              );
             },
             tooltip: '切换外观',
           ),
           _RailItem(
+            key: TrashFly.targetKey,
             icon: LucideIcons.trash2,
             label: '回收',
             active: active == 'trash',
@@ -458,10 +480,12 @@ class _Rail extends StatelessWidget {
 
 class _RailItem extends StatelessWidget {
   const _RailItem({
+    super.key,
     required this.icon,
     required this.label,
     required this.active,
     required this.onTap,
+    this.onTapPosition,
     this.tooltip,
   });
 
@@ -469,6 +493,7 @@ class _RailItem extends StatelessWidget {
   final String label;
   final bool active;
   final VoidCallback onTap;
+  final ValueChanged<Offset>? onTapPosition;
   final String? tooltip;
 
   @override
@@ -481,6 +506,9 @@ class _RailItem extends StatelessWidget {
         child: HoverBuilder(
           builder: (context, hovered, t) {
             return GestureDetector(
+              onTapUp: onTapPosition == null
+                  ? null
+                  : (details) => onTapPosition!(details.globalPosition),
               onTap: onTap,
               child: Stack(
                 alignment: Alignment.centerLeft,

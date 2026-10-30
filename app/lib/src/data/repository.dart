@@ -48,6 +48,7 @@ class NoteStore {
 
   File get _libraryFile => File(p.join(root.path, 'library.json'));
   File get _settingsFile => File(p.join(root.path, 'settings.json'));
+  File get _foldersFile => File(p.join(root.path, 'folders.json'));
 
   File _noteFile(String id) => File(p.join(notesDir.path, '$id.json'));
 
@@ -91,6 +92,24 @@ class NoteStore {
   Future<void> persistLibrary(List<NoteMeta> metas) async {
     final raw = jsonEncode(metas.map((e) => e.toJson()).toList());
     await _writeAtomic(_libraryFile, raw);
+  }
+
+  Future<List<Folder>> loadFolders() async {
+    if (!await _foldersFile.exists()) return [];
+    try {
+      final raw = await _foldersFile.readAsString();
+      final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+      return list.map(Folder.fromJson).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> persistFolders(List<Folder> folders) async {
+    await _writeAtomic(
+      _foldersFile,
+      jsonEncode(folders.map((e) => e.toJson()).toList()),
+    );
   }
 
   Future<Note?> loadNote(String id) async {
@@ -230,6 +249,10 @@ class NoteStore {
       final data = await _settingsFile.readAsBytes();
       archive.addFile(ArchiveFile('settings.json', data.length, data));
     }
+    if (await _foldersFile.exists()) {
+      final data = await _foldersFile.readAsBytes();
+      archive.addFile(ArchiveFile('folders.json', data.length, data));
+    }
     final bytes = ZipEncoder().encode(archive);
     final name = 'ThisNote-backup-${DateTime.now().millisecondsSinceEpoch}.zip';
     final out = File(p.join(root.path, name));
@@ -246,7 +269,9 @@ class NoteStore {
     for (final file in archive) {
       if (!file.isFile) continue;
       final name = file.name.replaceAll('\\', '/');
-      if (name == 'library.json' || name == 'settings.json') {
+      if (name == 'library.json' ||
+          name == 'settings.json' ||
+          name == 'folders.json') {
         final out = File(p.join(root.path, name));
         await out.writeAsBytes(file.content as List<int>, flush: true);
         count++;

@@ -105,6 +105,8 @@ class NoteMeta {
     this.favorite = false,
     this.deletedAt,
     this.words = 0,
+    this.folderId,
+    this.sortOrder = 0,
     required this.day,
   });
 
@@ -122,6 +124,8 @@ class NoteMeta {
   DateTime? deletedAt;
   int words;
   String day;
+  String? folderId;
+  int sortOrder;
 
   String get excerpt => excerptOf(text);
   bool get isTrashed => deletedAt != null;
@@ -141,6 +145,8 @@ class NoteMeta {
         'deletedAt': deletedAt?.toIso8601String(),
         'words': words,
         'day': day,
+        'folderId': folderId,
+        'sortOrder': sortOrder,
       };
 
   factory NoteMeta.fromJson(Map<String, dynamic> j) => NoteMeta(
@@ -162,6 +168,8 @@ class NoteMeta {
             : DateTime.tryParse(j['deletedAt'] as String),
         words: (j['words'] as int?) ?? 0,
         day: (j['day'] as String?) ?? dayKey(DateTime.now()),
+        folderId: j['folderId'] as String?,
+        sortOrder: (j['sortOrder'] as int?) ?? 0,
       );
 
   NoteMeta copyWith({
@@ -178,6 +186,9 @@ class NoteMeta {
     bool clearDeletedAt = false,
     int? words,
     String? day,
+    String? folderId,
+    bool clearFolder = false,
+    int? sortOrder,
   }) =>
       NoteMeta(
         id: id,
@@ -194,6 +205,49 @@ class NoteMeta {
         deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
         words: words ?? this.words,
         day: day ?? this.day,
+        folderId: clearFolder ? null : (folderId ?? this.folderId),
+        sortOrder: sortOrder ?? this.sortOrder,
+      );
+}
+
+class Folder {
+  Folder({
+    required this.id,
+    required this.name,
+    this.parentId,
+    this.order = 0,
+  });
+
+  final String id;
+  String name;
+  String? parentId;
+  int order;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'parentId': parentId,
+        'order': order,
+      };
+
+  factory Folder.fromJson(Map<String, dynamic> j) => Folder(
+        id: j['id'] as String,
+        name: (j['name'] as String?) ?? '文件夹',
+        parentId: j['parentId'] as String?,
+        order: (j['order'] as int?) ?? 0,
+      );
+
+  Folder copyWith({
+    String? name,
+    String? parentId,
+    bool clearParent = false,
+    int? order,
+  }) =>
+      Folder(
+        id: id,
+        name: name ?? this.name,
+        parentId: clearParent ? null : (parentId ?? this.parentId),
+        order: order ?? this.order,
       );
 }
 
@@ -213,6 +267,8 @@ class Note {
     this.favorite = false,
     this.deletedAt,
     this.words = 0,
+    this.folderId,
+    this.sortOrder = 0,
     required this.day,
   });
 
@@ -233,6 +289,8 @@ class Note {
   DateTime? deletedAt;
   int words;
   String day;
+  String? folderId;
+  int sortOrder;
 
   String get excerpt => excerptOf(text);
   bool get isTrashed => deletedAt != null;
@@ -252,6 +310,8 @@ class Note {
         deletedAt: deletedAt,
         words: words,
         day: day,
+        folderId: folderId,
+        sortOrder: sortOrder,
       );
 
   factory Note.fromMeta(NoteMeta meta, {List<dynamic>? delta, String? text}) =>
@@ -273,6 +333,8 @@ class Note {
         deletedAt: meta.deletedAt,
         words: meta.words,
         day: meta.day,
+        folderId: meta.folderId,
+        sortOrder: meta.sortOrder,
       );
 
   Map<String, dynamic> toJson() => {
@@ -302,6 +364,8 @@ class Note {
             : DateTime.tryParse(j['deletedAt'] as String),
         words: (j['words'] as int?) ?? 0,
         day: (j['day'] as String?) ?? dayKey(DateTime.now()),
+        folderId: j['folderId'] as String?,
+        sortOrder: (j['sortOrder'] as int?) ?? 0,
       );
 }
 

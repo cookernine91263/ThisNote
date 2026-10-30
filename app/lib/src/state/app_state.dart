@@ -25,6 +25,8 @@ class AppState extends ChangeNotifier {
   String? startupError;
   AppSettings settings = AppSettings();
   List<NoteMeta> notes = [];
+  List<Folder> folders = [];
+  String? folderFilter;
   Note? current;
   EditorSession? session;
   String view = 'today';
@@ -41,6 +43,7 @@ class AppState extends ChangeNotifier {
     await store.init();
     settings = await store.loadSettings();
     notes = await store.loadLibrary();
+    folders = await store.loadFolders();
     await store.seedIfEmpty(notes);
     notes = await store.loadLibrary();
     view = settings.lastView;
@@ -110,6 +113,16 @@ class AppState extends ChangeNotifier {
       default:
         list = activeNotes;
     }
+    if (folderFilter != null) {
+      if (folderFilter == '__unfiled__') {
+        list = list.where((n) => n.folderId == null);
+      } else {
+        final ids = folderTreeIds(folderFilter!);
+        list = list.where(
+          (n) => n.folderId != null && ids.contains(n.folderId),
+        );
+      }
+    }
     final q = query.trim().toLowerCase();
     if (q.isNotEmpty) {
       list = list.where((n) {
@@ -128,6 +141,10 @@ class AppState extends ChangeNotifier {
           return a.title.compareTo(b.title);
         case 'words':
           return b.words.compareTo(a.words);
+        case 'manual':
+          final byOrder = a.sortOrder.compareTo(b.sortOrder);
+          if (byOrder != 0) return byOrder;
+          return b.updatedAt.compareTo(a.updatedAt);
         default:
           return b.updatedAt.compareTo(a.updatedAt);
       }
@@ -211,9 +228,10 @@ class AppState extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   void setView(String v) {
-    if (view == v && tagFilter == null) return;
+    if (view == v && tagFilter == null && folderFilter == null) return;
     view = v;
     tagFilter = null;
+    folderFilter = null;
     if (v == 'today') selectedDay = null;
     if (v != 'search') query = '';
     settings.lastView = v;
@@ -224,12 +242,21 @@ class AppState extends ChangeNotifier {
   void selectTag(String tag) {
     view = 'tags';
     tagFilter = tag;
+    folderFilter = null;
     _notify();
   }
 
   void selectDay(DateTime date) {
     view = 'calendar';
     selectedDay = DateTime(date.year, date.month, date.day);
+    folderFilter = null;
+    _notify();
+  }
+
+  void setFolderFilter(String? id) {
+    view = 'all';
+    tagFilter = null;
+    folderFilter = id;
     _notify();
   }
 
@@ -247,6 +274,156 @@ class AppState extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
+  // 文件夹与手动排序
+  // ---------------------------------------------------------------------------
+
+  List<Folder> rootFolders() {
+    final result = folders.where((f) => f.parentId == null).toList();
+    result.sort((a, b) => a.order.compareTo(b.order));
+    return result;
+  }
+
+  List<Folder> childFolders(String? parentId) {
+    final result = folders.where((f) => f.parentId == parentId).toList();
+    result.sort((a, b) => a.order.compareTo(b.order));
+    return result;
+  }
+
+  Folder? folderById(String? id) {
+    if (id == null) return null;
+    for (final folder in folders) {
+      if (folder.id == id) return folder;
+    }
+    return null;
+  }
+
+  Set<String> folderTreeIds(String id) {
+    final result = <String>{id};
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final folder in folders) {
+        if (folder.parentId != null &&
+            result.contains(folder.parentId) &&
+            result.add(folder.id)) {
+          changed = true;
+        }
+      }
+    }
+    return result;
+  }
+
+  int folderCount(String id, {bool includeChildren = true}) {
+    final ids = includeChildren ? folderTreeIds(id) : {id};
+    return activeNotes
+        .where((n) => n.folderId != null && ids.contains(n.folderId))
+        .length;
+  }
+
+  Future<Folder> createFolder(String name, {String? parentId}) async {
+    final siblings = childFolders(parentId);
+    final folder = Folder(
+      id: _uuid.v4(),
+      name: name.trim().isEmpty ? '新文件夹' : name.trim(),
+      parentId: parentId,
+      order: siblings.isEmpty ? 0 : siblings.last.order + 10,
+    );
+    folders.add(folder);
+    await store.persistFolders(folders);
+    _notify();
+    return folder;
+  }
+
+  Future<void> renameFolder(String id, String name) async {
+    final folder = folderById(id);
+    if (folder == null) return;
+    folder.name = name.trim().isEmpty ? folder.name : name.trim();
+    await store.persistFolders(folders);
+    _notify();
+  }
+
+  Future<void> deleteFolder(String id) async {
+    final folder = folderById(id);
+    if (folder == null) return;
+    final parent = folder.parentId;
+    for (final child in folders.where((f) => f.parentId == id)) {
+      child.parentId = parent;
+    }
+    for (final note in notes.where((n) => n.folderId == id)) {
+      note.folderId = parent;
+    }
+    folders.removeWhere((f) => f.id == id);
+    if (folderFilter == id) folderFilter = null;
+    await store.persistFolders(folders);
+    await store.persistLibrary(notes);
+    _notify();
+  }
+
+  Future<void> moveNoteToFolder(String noteId, String? folderId) async {
+    final index = notes.indexWhere((n) => n.id == noteId);
+    if (index < 0) return;
+    notes[index].folderId = folderId;
+    if (current?.id == noteId) current!.folderId = folderId;
+    await store.persistLibrary(notes);
+    _notify();
+  }
+
+  Future<void> reorderNote(String noteId, String targetId) async {
+    final dragged = notes.indexWhere((n) => n.id == noteId);
+    final target = notes.indexWhere((n) => n.id == targetId);
+    if (dragged < 0 || target < 0 || noteId == targetId) return;
+    final day = notes[dragged].day;
+    if (notes[target].day != day) return;
+    final group = notes.where((n) => n.day == day).toList()
+      ..sort((a, b) {
+        final byOrder = a.sortOrder.compareTo(b.sortOrder);
+        return byOrder != 0 ? byOrder : b.updatedAt.compareTo(a.updatedAt);
+      });
+    final item = group.removeAt(group.indexWhere((n) => n.id == noteId));
+    var to = group.indexWhere((n) => n.id == targetId);
+    if (to < 0) to = group.length;
+    group.insert(to, item);
+    for (var i = 0; i < group.length; i++) {
+      group[i].sortOrder = (i + 1) * 10;
+    }
+    sort = 'manual';
+    settings.sort = 'manual';
+    await store.persistLibrary(notes);
+    await store.saveSettings(settings);
+    _notify();
+  }
+
+  Future<void> moveFolder(
+    String folderId,
+    String targetId, {
+    required String mode, // before, after, inside
+  }) async {
+    if (folderId == targetId) return;
+    final folder = folderById(folderId);
+    final target = folderById(targetId);
+    if (folder == null || target == null) return;
+    if (folderTreeIds(folderId).contains(targetId)) return;
+    if (mode == 'inside') {
+      folder.parentId = targetId;
+      final siblings =
+          childFolders(targetId).where((f) => f.id != folderId).toList();
+      folder.order = siblings.isEmpty ? 0 : siblings.last.order + 10;
+    } else {
+      final parentId = target.parentId;
+      folder.parentId = parentId;
+      final siblings = childFolders(parentId).where((f) => f.id != folderId).toList();
+      final index = siblings.indexWhere((f) => f.id == targetId);
+      final insertAt = mode == 'after' ? index + 1 : index;
+      siblings.insert(insertAt.clamp(0, siblings.length), folder);
+      for (var i = 0; i < siblings.length; i++) {
+        siblings[i].order = (i + 1) * 10;
+      }
+    }
+    await store.persistFolders(folders);
+    _notify();
+  }
+
+  // ---------------------------------------------------------------------------
   // 笔记
   // ---------------------------------------------------------------------------
 
@@ -255,6 +432,12 @@ class AppState extends ChangeNotifier {
     await closeEditor();
     final note = await store.loadNote(id);
     if (note == null) return;
+    final matches = notes.where((n) => n.id == id);
+    final meta = matches.isEmpty ? null : matches.first;
+    if (meta != null) {
+      note.folderId = meta.folderId;
+      note.sortOrder = meta.sortOrder;
+    }
     current = note;
     session = EditorSession(app: this, note: note);
     saveStatus = SaveStatus.saved;
@@ -398,8 +581,10 @@ class AppState extends ChangeNotifier {
     await closeEditor();
     settings = await store.loadSettings();
     notes = await store.loadLibrary();
+    folders = await store.loadFolders();
     query = '';
     tagFilter = null;
+    folderFilter = null;
     _notify();
   }
 
