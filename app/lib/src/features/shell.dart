@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -33,6 +33,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell>
     with WindowListener, WidgetsBindingObserver {
   bool _zen = false;
+  bool _zenResetScheduled = false;
 
   @override
   void initState() {
@@ -84,6 +85,13 @@ class _AppShellState extends State<AppShell>
 
   bool _onGlobalKey(KeyEvent event) {
     if (event is! KeyDownEvent) return false;
+    // 专注模式里按 Esc 直接退出。弹窗在场时让弹窗先处理 Esc。
+    if (event.logicalKey == LogicalKeyboardKey.escape &&
+        _zen &&
+        !Navigator.of(context, rootNavigator: true).canPop()) {
+      _toggleZen();
+      return true;
+    }
     final keyboard = HardwareKeyboard.instance;
     if (!keyboard.isControlPressed && !keyboard.isMetaPressed) return false;
     // 有弹窗/面板在场时不抢键：否则在标签、链接或 AI 面板里按 Ctrl+N，
@@ -138,7 +146,7 @@ class _AppShellState extends State<AppShell>
       return true;
     }
     if (event.logicalKey == LogicalKeyboardKey.comma) {
-      state.setView('settings');
+      _goToView('settings');
       return true;
     }
     return false;
@@ -149,7 +157,27 @@ class _AppShellState extends State<AppShell>
   @override
   void onWindowUnmaximize() => setState(() {});
 
+  /// 只有编辑器这几类视图才谈得上「专注」。
+  /// 日历、统计、设置都是整页面板，专注模式把它们藏起来只会把导航栏一起藏掉。
+  bool _isWritingView(String view) =>
+      !const ['calendar', 'stats', 'settings'].contains(view);
+
+  /// 切换视图时同步退出专注，避免从设置/日历进入后再无入口返回。
+  void _goToView(String view) {
+    if (_zen && !_isWritingView(view)) {
+      setState(() => _zen = false);
+    }
+    context.read<AppState>().setView(view);
+  }
+
   void _toggleZen() {
+    final state = context.read<AppState>();
+    if (state.current == null) return;
+    // 在设置/日历/统计页点「专注」时，先回到当前笔记，再进入专注，
+    // 否则侧栏会被隐藏，而眼前仍是设置页，退不出去。
+    if (!_isWritingView(state.view)) {
+      state.setView('all');
+    }
     setState(() => _zen = !_zen);
   }
 
@@ -158,7 +186,17 @@ class _AppShellState extends State<AppShell>
     final state = context.watch<AppState>();
     final width = MediaQuery.sizeOf(context).width;
     final mobile = width < 900;
-    final zen = _zen && state.current != null;
+    final zen = _zen &&
+        state.current != null &&
+        _isWritingView(state.view);
+    // 已经离开编辑器（比如从专注模式里按 Ctrl+,）时，把残留的专注状态收回去。
+    if (_zen && !zen && !_zenResetScheduled) {
+      _zenResetScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _zenResetScheduled = false;
+        if (mounted && _zen) setState(() => _zen = false);
+      });
+    }
 
     if (mobile) return _MobileShell(state: state);
 
@@ -183,6 +221,7 @@ class _AppShellState extends State<AppShell>
                       zen: zen,
                       onPalette: () => showCommandPalette(context),
                       onToggleZen: _toggleZen,
+                      onGo: _goToView,
                     ),
                   ),
                   _AnimatedWidth(
@@ -397,11 +436,13 @@ class _Rail extends StatelessWidget {
     required this.zen,
     required this.onPalette,
     required this.onToggleZen,
+    required this.onGo,
   });
 
   final bool zen;
   final VoidCallback onPalette;
   final VoidCallback onToggleZen;
+  final ValueChanged<String> onGo;
 
   @override
   Widget build(BuildContext context) {
@@ -426,31 +467,31 @@ class _Rail extends StatelessWidget {
             icon: LucideIcons.sun,
             label: _t('今日'),
             active: active == 'today',
-            onTap: () => state.setView('today'),
+            onTap: () => onGo('today'),
           ),
           _RailItem(
             icon: LucideIcons.library,
             label: _t('全部'),
             active: active == 'all',
-            onTap: () => state.setView('all'),
+            onTap: () => onGo('all'),
           ),
           _RailItem(
             icon: LucideIcons.calendarDays,
             label: _t('日历'),
             active: active == 'calendar',
-            onTap: () => state.setView('calendar'),
+            onTap: () => onGo('calendar'),
           ),
           _RailItem(
             icon: LucideIcons.tag,
             label: _t('标签'),
             active: active == 'tags',
-            onTap: () => state.setView('tags'),
+            onTap: () => onGo('tags'),
           ),
           _RailItem(
             icon: LucideIcons.chartNoAxesColumn,
             label: _t('统计'),
             active: active == 'stats',
-            onTap: () => state.setView('stats'),
+            onTap: () => onGo('stats'),
           ),
           const Spacer(),
           _RailItem(
@@ -461,6 +502,7 @@ class _Rail extends StatelessWidget {
             tooltip: _t('命令面板 · Ctrl K'),
           ),
           _RailItem(
+            key: const Key('rail-focus'),
             icon: LucideIcons.focus,
             label: _t('专注'),
             active: zen,
@@ -494,13 +536,14 @@ class _Rail extends StatelessWidget {
             icon: LucideIcons.trash2,
             label: _t('回收'),
             active: active == 'trash',
-            onTap: () => state.setView('trash'),
+            onTap: () => onGo('trash'),
           ),
           _RailItem(
+            key: const Key('rail-settings'),
             icon: LucideIcons.settings,
             label: _t('设置'),
             active: active == 'settings',
-            onTap: () => state.setView('settings'),
+            onTap: () => onGo('settings'),
           ),
           const SizedBox(height: 12),
         ],
@@ -511,6 +554,7 @@ class _Rail extends StatelessWidget {
 
 class _RailItem extends StatelessWidget {
   const _RailItem({
+    super.key,
     required this.icon,
     required this.label,
     required this.active,
@@ -824,3 +868,5 @@ const Map<String, String> _en = <String, String>{
 };
 
 String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
+
+

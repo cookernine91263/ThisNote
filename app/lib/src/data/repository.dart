@@ -359,8 +359,33 @@ class NoteStore {
     return count;
   }
 
-  Future<void> _writeAtomic(File file, String content) async {
-    final tmp = File('${file.path}.tmp');
+  /// 同一个文件的写入串行执行：切换视图、改设置都可能连续触发保存，
+  /// 两个写入共用 settings.json.tmp 时会在 Windows 上抢同一个重命名。
+  static final Map<String, Future<void>> _writeChains = <String, Future<void>>{};
+
+  Future<void> _writeAtomic(File file, String content) {
+    final key = file.path;
+    final previous = _writeChains[key] ?? Future<void>.value();
+    final next = previous
+        .catchError((Object _) {})
+        .then((_) => _writeNow(file, content));
+    _writeChains[key] = next;
+    return next.whenComplete(() {
+      if (identical(_writeChains[key], next)) _writeChains.remove(key);
+    });
+  }
+
+  /// 等待所有排队中的写入结束（测试收尾、退出前都可以用）。
+  Future<void> flushWrites() async {
+    while (_writeChains.isNotEmpty) {
+      await Future.wait(_writeChains.values.toList());
+    }
+  }
+
+  Future<void> _writeNow(File file, String content) async {
+    final tmp = File(
+      '${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp',
+    );
     await tmp.writeAsString(content, flush: true);
     if (await file.exists()) {
       // 先把旧文件留成 .bak：删旧名和改名之间若断电，还能从 .bak 读回上一版。
