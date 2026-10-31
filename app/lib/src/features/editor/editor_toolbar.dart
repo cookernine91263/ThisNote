@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
+import '../../core/i18n.dart';
 import '../../core/motion.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
@@ -14,6 +15,53 @@ import 'color_picker.dart';
 import 'font_picker.dart';
 import 'huazi.dart';
 import 'note_fonts.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。工具栏按钮窄，标签只取短的词，
+/// 完整的说法放进 tooltip。
+const Map<String, String> _en = <String, String>{
+  '撤销 · Ctrl Z': 'Undo · Ctrl Z',
+  '重做 · Ctrl Y': 'Redo · Ctrl Y',
+  '正文': 'Body',
+  '标题 1': 'Heading 1',
+  '标题 2': 'Heading 2',
+  '标题 3': 'Heading 3',
+  '黑体': 'Sans',
+  '宋体': 'Serif',
+  '文楷': 'WenKai',
+  '手写': 'Brush',
+  '小薇': 'XiaoWei',
+  '细黑': 'Light',
+  '加粗 · Ctrl B': 'Bold · Ctrl B',
+  '倾斜 · Ctrl I': 'Italic · Ctrl I',
+  '变细': 'Light',
+  '下划线 · Ctrl U': 'Underline · Ctrl U',
+  '删除线': 'Strike',
+  '文字颜色': 'Text color',
+  '高亮': 'Highlight',
+  '左对齐': 'Align left',
+  '居中': 'Center',
+  '右对齐': 'Align right',
+  '两端对齐': 'Justify',
+  '无序列表': 'Bulleted list',
+  '有序列表': 'Numbered list',
+  '待办清单': 'To-do list',
+  '引用': 'Quote',
+  '代码块': 'Code block',
+  '链接': 'Link',
+  '插入图片': 'Insert image',
+  '粘贴图片（来自剪贴板）': 'Paste image (from clipboard)',
+  '分隔线': 'Divider',
+  'AI 助手 · 润色 / 续写 / 起标题': 'AI assistant · polish / continue / title',
+  '花字': 'Flower',
+  '清除格式': 'Clear formatting',
+  '图片': 'Image',
+  '剪贴板里没有可粘贴的图片': 'No image in the clipboard to paste',
+  '添加链接': 'Add link',
+  '移除': 'Remove',
+  '应用': 'Apply',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
 
 class EditorToolbar extends StatelessWidget {
   const EditorToolbar({
@@ -84,35 +132,35 @@ class EditorToolbar extends StatelessWidget {
         final children = <Widget>[
           _ToolButton(
             icon: LucideIcons.undo2,
-            tooltip: '撤销 · Ctrl Z',
+            tooltip: _t('撤销 · Ctrl Z'),
             onPressed: controller.hasUndo ? controller.undo : null,
           ),
           _ToolButton(
             icon: LucideIcons.redo2,
-            tooltip: '重做 · Ctrl Y',
+            tooltip: _t('重做 · Ctrl Y'),
             onPressed: controller.hasRedo ? controller.redo : null,
           ),
           const _Sep(),
           _MenuChip(
             label: switch (header) {
-              1 => '标题 1',
-              2 => '标题 2',
-              3 => '标题 3',
-              _ => '正文',
+              1 => _t('标题 1'),
+              2 => _t('标题 2'),
+              3 => _t('标题 3'),
+              _ => _t('正文'),
             },
             active: header != null,
             // 「标题 1」比「正文」宽，72 会在换行字体下溢出几像素。
             width: 84,
             menu: [
-              _MenuItem('正文', () => applyHeader(null)),
-              _MenuItem('标题 1', () => applyHeader(1)),
-              _MenuItem('标题 2', () => applyHeader(2)),
-              _MenuItem('标题 3', () => applyHeader(3)),
+              _MenuItem(_t('正文'), () => applyHeader(null)),
+              _MenuItem(_t('标题 1'), () => applyHeader(1)),
+              _MenuItem(_t('标题 2'), () => applyHeader(2)),
+              _MenuItem(_t('标题 3'), () => applyHeader(3)),
             ],
           ),
           const SizedBox(width: 2),
           _FontChip(
-            label: fontLabel(font),
+            label: _t(fontLabel(font)),
             active: font != null,
             onTap: () async {
               final selected = await showFontPicker(
@@ -131,19 +179,19 @@ class EditorToolbar extends StatelessWidget {
           const SizedBox(width: 2),
           _ToolButton(
             icon: LucideIcons.bold,
-            tooltip: '加粗 · Ctrl B',
+            tooltip: _t('加粗 · Ctrl B'),
             active: has('bold'),
             onPressed: () => toggle(Attribute.bold),
           ),
           _ToolButton(
             icon: LucideIcons.italic,
-            tooltip: '倾斜 · Ctrl I',
+            tooltip: _t('倾斜 · Ctrl I'),
             active: has('italic'),
             onPressed: () => toggle(Attribute.italic),
           ),
           _ToolButton(
             icon: LucideIcons.type,
-            tooltip: '变细',
+            tooltip: _t('变细'),
             active: thin,
             onPressed: () {
               if (thin) {
@@ -155,20 +203,20 @@ class EditorToolbar extends StatelessWidget {
           ),
           _ToolButton(
             icon: LucideIcons.underline,
-            tooltip: '下划线 · Ctrl U',
+            tooltip: _t('下划线 · Ctrl U'),
             active: has('underline'),
             onPressed: () => toggle(Attribute.underline),
           ),
           _ToolButton(
             icon: LucideIcons.strikethrough,
-            tooltip: '删除线',
+            tooltip: _t('删除线'),
             active: has('strike'),
             onPressed: () => toggle(Attribute.strikeThrough),
           ),
           const _Sep(),
           _ToolButton(
             icon: LucideIcons.palette,
-            tooltip: '文字颜色',
+            tooltip: _t('文字颜色'),
             active: has('color'),
             onPressed: () async {
               final hex = await showNoteColorPicker(
@@ -185,7 +233,7 @@ class EditorToolbar extends StatelessWidget {
           ),
           _ToolButton(
             icon: LucideIcons.highlighter,
-            tooltip: '高亮',
+            tooltip: _t('高亮'),
             active: has('background'),
             onPressed: () async {
               final hex = await showNoteColorPicker(
@@ -210,10 +258,10 @@ class EditorToolbar extends StatelessWidget {
             active: align != null,
             width: 38,
             menu: [
-              _MenuItem('左对齐', () => applyAlign('left'), icon: LucideIcons.alignLeft),
-              _MenuItem('居中', () => applyAlign('center'), icon: LucideIcons.alignCenter),
-              _MenuItem('右对齐', () => applyAlign('right'), icon: LucideIcons.alignRight),
-              _MenuItem('两端对齐', () => applyAlign('justify'), icon: LucideIcons.alignJustify),
+              _MenuItem(_t('左对齐'), () => applyAlign('left'), icon: LucideIcons.alignLeft),
+              _MenuItem(_t('居中'), () => applyAlign('center'), icon: LucideIcons.alignCenter),
+              _MenuItem(_t('右对齐'), () => applyAlign('right'), icon: LucideIcons.alignRight),
+              _MenuItem(_t('两端对齐'), () => applyAlign('justify'), icon: LucideIcons.alignJustify),
             ],
           ),
           _MenuChip(
@@ -225,26 +273,26 @@ class EditorToolbar extends StatelessWidget {
             active: list != null,
             width: 38,
             menu: [
-              _MenuItem('无序列表', () => applyList('bullet'), icon: LucideIcons.list),
-              _MenuItem('有序列表', () => applyList('ordered'), icon: LucideIcons.listOrdered),
-              _MenuItem('待办清单', () => applyList('unchecked'), icon: LucideIcons.listChecks),
+              _MenuItem(_t('无序列表'), () => applyList('bullet'), icon: LucideIcons.list),
+              _MenuItem(_t('有序列表'), () => applyList('ordered'), icon: LucideIcons.listOrdered),
+              _MenuItem(_t('待办清单'), () => applyList('unchecked'), icon: LucideIcons.listChecks),
             ],
           ),
           _ToolButton(
             icon: LucideIcons.textQuote,
-            tooltip: '引用',
+            tooltip: _t('引用'),
             active: has('blockquote'),
             onPressed: () => toggle(Attribute.blockQuote),
           ),
           _ToolButton(
             icon: LucideIcons.code,
-            tooltip: '代码块',
+            tooltip: _t('代码块'),
             active: has('code-block'),
             onPressed: () => toggle(Attribute.codeBlock),
           ),
           _ToolButton(
             icon: LucideIcons.link,
-            tooltip: '链接',
+            tooltip: _t('链接'),
             active: has('link'),
             onPressed: () async {
               final url = await _linkDialog(context, controller);
@@ -258,23 +306,23 @@ class EditorToolbar extends StatelessWidget {
           ),
           _ToolButton(
             icon: LucideIcons.image,
-            tooltip: '插入图片',
+            tooltip: _t('插入图片'),
             onPressed: () => _insertImage(context),
           ),
           _ToolButton(
             icon: LucideIcons.clipboardPaste,
-            tooltip: '粘贴图片（来自剪贴板）',
+            tooltip: _t('粘贴图片（来自剪贴板）'),
             onPressed: () => _pasteImage(context),
           ),
           _ToolButton(
             icon: LucideIcons.separatorHorizontal,
-            tooltip: '分隔线',
+            tooltip: _t('分隔线'),
             onPressed: session.insertDivider,
           ),
           const _Sep(),
           _ToolButton(
             icon: LucideIcons.sparkles,
-            tooltip: 'AI 助手 · 润色 / 续写 / 起标题',
+            tooltip: _t('AI 助手 · 润色 / 续写 / 起标题'),
             onPressed: () => showAiSheet(context, session),
           ),
           _HuaziButton(
@@ -283,7 +331,7 @@ class EditorToolbar extends StatelessWidget {
           ),
           _ToolButton(
             icon: LucideIcons.removeFormatting,
-            tooltip: '清除格式',
+            tooltip: _t('清除格式'),
             onPressed: session.clearFormatting,
           ),
         ];
@@ -314,10 +362,10 @@ class EditorToolbar extends StatelessWidget {
 
   Future<void> _insertImage(BuildContext context) async {
     final file = await openFile(
-      acceptedTypeGroups: const [
+      acceptedTypeGroups: [
         XTypeGroup(
-          label: '图片',
-          extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'],
+          label: _t('图片'),
+          extensions: const ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'],
         ),
       ],
     );
@@ -338,7 +386,7 @@ class EditorToolbar extends StatelessWidget {
     final ok = await session.pasteImageFromClipboard();
     if (!context.mounted) return;
     if (!ok) {
-      showToast(context, '剪贴板里没有可粘贴的图片', icon: LucideIcons.alertCircle);
+      showToast(context, _t('剪贴板里没有可粘贴的图片'), icon: LucideIcons.alertCircle);
     } else {
       session.editorFocus.requestFocus();
     }
@@ -355,7 +403,7 @@ class EditorToolbar extends StatelessWidget {
       builder: (context) => AlertDialog(
         backgroundColor: c.surface,
         title: Text(
-          '添加链接',
+          _t('添加链接'),
           style: TextStyle(
             fontFamily: 'NotoSansSC',
             fontSize: 16,
@@ -397,7 +445,7 @@ class EditorToolbar extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(''),
-            child: Text('移除', style: TextStyle(color: c.inkMuted)),
+            child: Text(_t('移除'), style: TextStyle(color: c.inkMuted)),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -405,7 +453,7 @@ class EditorToolbar extends StatelessWidget {
               foregroundColor: c.paper,
             ),
             onPressed: () => Navigator.of(context).pop(text.text.trim()),
-            child: const Text('应用'),
+            child: Text(_t('应用')),
           ),
         ],
       ),
@@ -483,7 +531,7 @@ class _HuaziButton extends StatelessWidget {
                   ),
                   const SizedBox(width: 5),
                   Text(
-                    '花字',
+                    _t('花字'),
                     style: TextStyle(
                       fontFamily: 'WenKai',
                       fontSize: 13,
@@ -522,7 +570,8 @@ class _FontChip extends StatelessWidget {
             onTap: onTap,
             child: AnimatedContainer(
               duration: Motion.fast,
-              width: 64,
+              // 英文名（WenKai / XiaoWei）比中文名宽，允许最少 64 宽、按需变宽。
+              constraints: const BoxConstraints(minWidth: 64),
               height: 30,
               padding: const EdgeInsets.symmetric(horizontal: 7),
               decoration: BoxDecoration(
@@ -608,7 +657,7 @@ class _MenuChip extends StatelessWidget {
           ),
       ],
       child: Container(
-        width: width,
+        constraints: BoxConstraints(minWidth: width),
         height: 30,
         padding: EdgeInsets.symmetric(horizontal: icon != null ? 0 : 9),
         decoration: BoxDecoration(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../core/i18n.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../state/app_state.dart';
@@ -94,9 +95,9 @@ class _TagEditorDialogState extends State<_TagEditorDialog> {
               Row(
                 children: [
                   Text(
-                    '标签',
+                    _t('标签'),
                     style: TextStyle(
-                      fontFamily: 'WenKai',
+                      fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
                       fontSize: 22,
                       letterSpacing: 1,
                       color: c.ink,
@@ -112,7 +113,7 @@ class _TagEditorDialogState extends State<_TagEditorDialog> {
               ),
               const SizedBox(height: 3),
               Text(
-                '回车添加；点下面的旧标签直接复用，避免同义标签越写越多。',
+                _t('回车添加；点下面的旧标签直接复用，避免同义标签越写越多。'),
                 style: TextStyle(
                   fontFamily: 'NotoSansSC',
                   fontSize: 10,
@@ -155,7 +156,9 @@ class _TagEditorDialogState extends State<_TagEditorDialog> {
                         ),
                         decoration: InputDecoration(
                           isDense: true,
-                          hintText: _tags.isEmpty ? '如：日常 读书' : '再加一个…',
+                          hintText: _tags.isEmpty
+                              ? _t('如：日常 读书')
+                              : _t('再加一个…'),
                           hintStyle: TextStyle(
                             fontFamily: 'NotoSansSC',
                             fontSize: 11,
@@ -175,7 +178,7 @@ class _TagEditorDialogState extends State<_TagEditorDialog> {
                   Icon(LucideIcons.history, size: 12, color: c.inkMuted),
                   const SizedBox(width: 5),
                   Text(
-                    query.isEmpty ? '用过的标签' : '匹配的标签',
+                    _t(query.isEmpty ? '用过的标签' : '匹配的标签'),
                     style: TextStyle(
                       fontFamily: 'NotoSansSC',
                       fontSize: 9.5,
@@ -191,9 +194,11 @@ class _TagEditorDialogState extends State<_TagEditorDialog> {
                     ? Padding(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         child: Text(
-                          all.isEmpty
-                              ? '还没有历史标签。写下第一个，之后就能点选。'
-                              : '没有匹配的旧标签，回车即可新建。',
+                          _t(
+                            all.isEmpty
+                                ? '还没有历史标签。写下第一个，之后就能点选。'
+                                : '没有匹配的旧标签，回车即可新建。',
+                          ),
                           style: TextStyle(
                             fontFamily: 'NotoSansSC',
                             fontSize: 10.5,
@@ -223,7 +228,7 @@ class _TagEditorDialogState extends State<_TagEditorDialog> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: Text('取消', style: TextStyle(color: c.inkMuted)),
+                    child: Text(_t('取消'), style: TextStyle(color: c.inkMuted)),
                   ),
                   const SizedBox(width: 4),
                   FilledButton(
@@ -239,7 +244,7 @@ class _TagEditorDialogState extends State<_TagEditorDialog> {
                       _add(_input.text);
                       Navigator.of(context).pop(List.of(_tags));
                     },
-                    child: const Text('保存'),
+                    child: Text(_t('保存')),
                   ),
                 ],
               ),
@@ -308,3 +313,21 @@ class _SuggestionChip extends StatelessWidget {
     );
   }
 }
+
+/// 英文文案。键是界面里的中文原文，值是对应的英文。
+const Map<String, String> _en = <String, String>{
+  '标签': 'Tags',
+  '回车添加；点下面的旧标签直接复用，避免同义标签越写越多。':
+      'Press Enter to add. Tap an old tag below to reuse it, so near-duplicates do not pile up.',
+  '如：日常 读书': 'e.g. daily reading',
+  '再加一个…': 'Add another…',
+  '用过的标签': 'Tags used before',
+  '匹配的标签': 'Matching tags',
+  '还没有历史标签。写下第一个，之后就能点选。':
+      'No tag history yet. Create the first one and it will show up here.',
+  '没有匹配的旧标签，回车即可新建。': 'No matching tag. Press Enter to create it.',
+  '取消': 'Cancel',
+  '保存': 'Save',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);

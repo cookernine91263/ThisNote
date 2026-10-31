@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'i18n.dart';
 import 'motion.dart';
 import 'theme.dart';
 
@@ -566,8 +567,8 @@ Future<bool> showConfirm(
   BuildContext context, {
   required String title,
   required String message,
-  String confirmLabel = '确定',
-  String cancelLabel = '取消',
+  String? confirmLabel,
+  String? cancelLabel,
   bool danger = false,
 }) async {
   final c = AppPalette.of(context);
@@ -599,7 +600,10 @@ Future<bool> showConfirm(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: Text(cancelLabel, style: TextStyle(color: c.inkMuted)),
+          child: Text(
+            cancelLabel ?? tr('取消'),
+            style: TextStyle(color: c.inkMuted),
+          ),
         ),
         FilledButton(
           style: FilledButton.styleFrom(
@@ -608,7 +612,7 @@ Future<bool> showConfirm(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
           ),
           onPressed: () => Navigator.of(context).pop(true),
-          child: Text(confirmLabel),
+          child: Text(confirmLabel ?? tr('确定')),
         ),
       ],
     ),

@@ -12,6 +12,7 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import '../core/format.dart';
+import '../core/i18n.dart';
 import '../core/typography.dart';
 import '../data/activity.dart';
 import '../data/models.dart';
@@ -20,6 +21,13 @@ import '../data/templates.dart';
 import '../features/editor/huazi.dart';
 import '../services/clipboard_image.dart';
 import '../services/markdown_import.dart';
+
+/// 只在状态层生成的几条文案（新建文件夹、副本、导入占位标题）。
+const _en = <String, String>{
+  '新文件夹': 'New folder',
+  '{title} 副本': '{title} (copy)',
+  '导入的笔记': 'Imported note',
+};
 
 enum SaveStatus { idle, saving, saved, error }
 
@@ -57,6 +65,7 @@ class AppState extends ChangeNotifier {
     startupError = null;
     await store.init();
     settings = await store.loadSettings();
+    I18n.lang = AppLang.fromCode(settings.language);
     notes = await store.loadLibrary();
     folders = await store.loadFolders();
     activity = await store.loadActivity();
@@ -352,7 +361,7 @@ class AppState extends ChangeNotifier {
     final siblings = childFolders(parentId);
     final folder = Folder(
       id: _uuid.v4(),
-      name: name.trim().isEmpty ? '新文件夹' : name.trim(),
+      name: name.trim().isEmpty ? tr('新文件夹', null, _en) : name.trim(),
       parentId: parentId,
       order: siblings.isEmpty ? 0 : siblings.last.order + 10,
     );
@@ -632,7 +641,7 @@ class AppState extends ChangeNotifier {
 
   String _titleFromFilename(String name) {
     final base = name.replaceAll(RegExp(r'\.[^.]+$'), '').trim();
-    return base.isEmpty ? '导入的笔记' : base;
+    return base.isEmpty ? tr('导入的笔记', null, _en) : base;
   }
 
   /// 接收从窗口拖进来的文件：图片插入当前笔记，md / txt 导入成新笔记。
@@ -693,7 +702,7 @@ class AppState extends ChangeNotifier {
     final copy = Note.fromJson({
       ...source.toJson(),
       'id': '${source.id}-copy-${now.millisecondsSinceEpoch}',
-      'title': '${source.title} 副本',
+      'title': tr('{title} 副本', {'title': source.title}, _en),
       'createdAt': now.toIso8601String(),
       'updatedAt': now.toIso8601String(),
     });
@@ -795,6 +804,7 @@ class AppState extends ChangeNotifier {
   Future<void> reload() async {
     await closeEditor();
     settings = await store.loadSettings();
+    I18n.lang = AppLang.fromCode(settings.language);
     notes = await store.loadLibrary();
     folders = await store.loadFolders();
     query = '';
@@ -828,6 +838,14 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> setThemeMode(ThemeMode mode) => updateSettings((s) => s.themeMode = mode);
+
+  /// 切换界面语言：先改全局状态再通知，MaterialApp 的 locale 跟着换，
+  /// 整棵界面树会在同一帧里以新语言重排。
+  Future<void> setLanguage(String code) async {
+    final next = code == 'en' ? 'en' : 'zh';
+    I18n.lang = AppLang.fromCode(next);
+    await updateSettings((s) => s.language = next);
+  }
 
   Future<void> setAccent(String accent) => updateSettings((s) => s.accent = accent);
 

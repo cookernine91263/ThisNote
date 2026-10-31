@@ -1,9 +1,11 @@
-# 此记 · ThisNote
+﻿# 此记 · ThisNote
 
 > 一张安静的纸，装得下日记、随笔和作文。  
 > 本地优先 · 原生 Windows / Android · 中文书写体验优先
 
-「此记」是一个**不联网也能好好写字**的桌面与移动写作空间。它把 Word 式的排版能力、日记应用的时间感、以及一点点东方的留白，收进同一个界面里。
+**中文** · [English](README.en.md)
+
+「此记」是一个**不联网也能好好写字**的桌面与移动写作空间。它把 Word 式的排版能力、日记应用的时间感、以及一点点东方的留白，收进同一个界面里。界面支持**中文 / English** 随时切换，首次启动的引导页就能直接选。
 
 ![首页](docs/screenshots/home.png)
 
@@ -18,6 +20,7 @@
 
 ### 写作
 
+- **中文 / English 界面**：引导页与设置里都能切换，切换后立即生效，笔记内容不会被改写
 - Word 式富文本：加粗 / 倾斜 / 变细 / 下划线 / 删除线 / 标题 1–3 / 引用 / 代码块 / 有序、无序、待办列表 / 对齐 / 缩进 / 文字颜色 / 高亮 / 链接 / 图片 / 分隔线
 - **一键花字**：选中一句话，从 8 种花字气质中选择，立刻变为大字号文楷 + 专属颜色（小 / 中 / 大三档）
 - 查找替换（Ctrl/⌘ + F、Ctrl/⌘ + H）、标题大纲、选中字数、复制为 Markdown / 纯文本、粘贴为纯文本
@@ -86,11 +89,17 @@
 | --- | --- |
 | ![日历](docs/screenshots/calendar.png) | ![统计](docs/screenshots/stats.png) |
 
+| 命令面板 | English 界面 |
+| --- | --- |
+| ![命令面板](docs/screenshots/palette.png) | ![English 界面](docs/screenshots/en/settings.png) |
+
 ![设置](docs/screenshots/settings.png)
 
-首次启动会有一页简短的引导：
+首次启动会有一页简短的引导，右上角可以直接切换语言：
 
-![引导](docs/screenshots/onboarding.png)
+| 中文引导 | English 引导 |
+| --- | --- |
+| ![引导](docs/screenshots/onboarding.png) | ![English 引导](docs/screenshots/onboarding-en.png) |
 
 ## 安装包
 
@@ -124,7 +133,7 @@ app/
     main.dart                    启动、窗口、Provider
     src/
       app.dart                   MaterialApp / 主题 / 首屏门禁
-      core/                      设计令牌、动效、格式化、通用组件
+      core/                      设计令牌、动效、格式化、中英文案、通用组件
       data/                      模型、文件仓库、模板与种子内容
       state/app_state.dart       应用状态 + 编辑会话
       features/                  页面与编辑器
@@ -242,3 +251,4 @@ data/
 ## 许可证
 
 代码以 [MIT](LICENSE) 发布。内置字体为 SIL Open Font License 1.1，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+

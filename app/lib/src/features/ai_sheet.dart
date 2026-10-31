@@ -2,11 +2,59 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../core/i18n.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../data/models.dart';
 import '../services/ai_service.dart';
 import '../state/app_state.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。
+/// [AiAction] 的 label / hint 也是中文原文，显示时再查这张表。
+const Map<String, String> _en = <String, String>{
+  '润色选中': 'Polish selection',
+  '扩写一点': 'Expand a little',
+  '压缩一下': 'Condense',
+  '接着写': 'Continue writing',
+  '起个标题': 'Give it a title',
+  '生成提纲': 'Make an outline',
+  '译成英文': 'Translate to English',
+  '译成日文': 'Translate to Japanese',
+  '让表达更准确、自然': 'Make it accurate and natural',
+  '补充细节，不虚构事实': 'Add detail without inventing facts',
+  '保留关键信息，更克制': 'Keep the key points, say less',
+  '顺着现在的语气往下写': 'Continue in the same voice',
+  '根据正文起一个标题': 'Title it from the body text',
+  '把想法整理成结构': 'Turn the idea into structure',
+  '保留语气的英文译文': 'English that keeps the tone',
+  '保留语气的日文译文': 'Japanese that keeps the tone',
+  '先配置 AI 助手': 'Set up the AI assistant first',
+  '此记不绑定任何厂商。你可以在设置里填写任意 OpenAI 兼容接口的地址、模型与 API Key。\n\n只有在点击 AI 功能时，选中的文字才会被发送。':
+      'ThisNote is not tied to any vendor. In Settings you can enter the address, model and API key of any OpenAI-compatible endpoint.\n\nText is only sent when you tap an AI action.',
+  '稍后': 'Later',
+  '去设置': 'Open settings',
+  '先选中一段文字，再让 AI 帮忙': 'Select some text first, then ask AI',
+  '先写一点内容': 'Write something first',
+  '已停止生成': 'Stopped generating',
+  'AI 没有返回内容': 'AI returned nothing',
+  '标题已更新': 'Title updated',
+  '已写入纸上': 'Written onto the page',
+  'AI 助手': 'AI assistant',
+  '可选': 'Optional',
+  '先选中文字；标题/提纲/续写会使用当前正文。':
+      'Select text first; Title, Outline and Continue use the whole note.',
+  '正在停止…': 'Stopping…',
+  '停止': 'Stop',
+  '正在思考…': 'Thinking…',
+  '生成时可以先读；完成后会请你预览，确认后才写进正文。':
+      'You can read along as it writes; you will preview the result before it is added to the note.',
+  'AI 的建议 · {action}': 'AI suggestion · {action}',
+  '放弃': 'Discard',
+  '替换选中': 'Replace selection',
+  '插入': 'Insert',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
 
 enum AiAction {
   polish,
@@ -101,7 +149,7 @@ Future<void> _showConfigure(BuildContext context, AppState state) async {
     builder: (context) => AlertDialog(
       backgroundColor: c.surface,
       title: Text(
-        '先配置 AI 助手',
+        _t('先配置 AI 助手'),
         style: TextStyle(
           fontFamily: 'NotoSansSC',
           fontSize: 16,
@@ -110,7 +158,7 @@ Future<void> _showConfigure(BuildContext context, AppState state) async {
         ),
       ),
       content: Text(
-        '此记不绑定任何厂商。你可以在设置里填写任意 OpenAI 兼容接口的地址、模型与 API Key。\n\n只有在点击 AI 功能时，选中的文字才会被发送。',
+        _t('此记不绑定任何厂商。你可以在设置里填写任意 OpenAI 兼容接口的地址、模型与 API Key。\n\n只有在点击 AI 功能时，选中的文字才会被发送。'),
         style: TextStyle(
           fontFamily: 'NotoSansSC',
           fontSize: 12,
@@ -121,7 +169,7 @@ Future<void> _showConfigure(BuildContext context, AppState state) async {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: Text('稍后', style: TextStyle(color: c.inkMuted)),
+          child: Text(_t('稍后'), style: TextStyle(color: c.inkMuted)),
         ),
         FilledButton(
           style: FilledButton.styleFrom(
@@ -129,7 +177,7 @@ Future<void> _showConfigure(BuildContext context, AppState state) async {
             foregroundColor: c.paper,
           ),
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('去设置'),
+          child: Text(_t('去设置')),
         ),
       ],
     ),
@@ -150,7 +198,11 @@ Future<void> _runAction(
           .toPlainText()
           .substring(selection.start, selection.end);
   if (action.needsSelection && selected.trim().isEmpty) {
-    showToast(context, '先选中一段文字，再让 AI 帮忙', icon: LucideIcons.textCursor);
+    showToast(
+      context,
+      _t('先选中一段文字，再让 AI 帮忙'),
+      icon: LucideIcons.textCursor,
+    );
     return;
   }
   final contextText = action.needsSelection
@@ -159,7 +211,7 @@ Future<void> _runAction(
           ? session.plainText.substring(0, 6000)
           : session.plainText;
   if (contextText.trim().isEmpty) {
-    showToast(context, '先写一点内容');
+    showToast(context, _t('先写一点内容'));
     return;
   }
 
@@ -197,7 +249,7 @@ Future<void> _runAction(
   Navigator.of(context, rootNavigator: true).pop();
 
   if (service.cancelled) {
-    showToast(context, '已停止生成', icon: LucideIcons.circleStop);
+    showToast(context, _t('已停止生成'), icon: LucideIcons.circleStop);
     return;
   }
   if (error != null) {
@@ -206,13 +258,13 @@ Future<void> _runAction(
   }
   final text = result!.trim();
   if (text.isEmpty) {
-    showToast(context, 'AI 没有返回内容');
+    showToast(context, _t('AI 没有返回内容'));
     return;
   }
   if (action == AiAction.title) {
     session.titleController.text = text.replaceAll(RegExp(r'^["「『]|["」』]$'), '');
     session.scheduleSave(immediate: true);
-    showToast(context, '标题已更新', icon: LucideIcons.sparkles);
+    showToast(context, _t('标题已更新'), icon: LucideIcons.sparkles);
     return;
   }
 
@@ -256,7 +308,7 @@ Future<void> _runAction(
   }
   session.scheduleSave(immediate: true);
   if (context.mounted) {
-    showToast(context, '已写入纸上', icon: LucideIcons.sparkles);
+    showToast(context, _t('已写入纸上'), icon: LucideIcons.sparkles);
   }
 }
 
@@ -284,11 +336,12 @@ class _AiMenuDialog extends StatelessWidget {
               Row(
                 children: [
                   Text(
-                    'AI 助手',
+                    _t('AI 助手'),
                     style: TextStyle(
-                      fontFamily: 'WenKai',
-                      fontSize: 24,
-                      letterSpacing: 1,
+                      fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
+                      fontSize: I18n.isEn ? 20 : 24,
+                      fontWeight: I18n.isEn ? FontWeight.w600 : null,
+                      letterSpacing: I18n.isEn ? 0.3 : 1,
                       color: c.ink,
                     ),
                   ),
@@ -301,7 +354,7 @@ class _AiMenuDialog extends StatelessWidget {
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      '可选',
+                      _t('可选'),
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 8.5,
@@ -319,7 +372,7 @@ class _AiMenuDialog extends StatelessWidget {
               ),
               const SizedBox(height: 3),
               Text(
-                '先选中文字；标题/提纲/续写会使用当前正文。',
+                _t('先选中文字；标题/提纲/续写会使用当前正文。'),
                 style: TextStyle(
                   fontFamily: 'NotoSansSC',
                   fontSize: 10,
@@ -351,7 +404,7 @@ class _AiMenuDialog extends StatelessWidget {
                           ),
                           const SizedBox(width: 10),
                           Text(
-                            action.label,
+                            _t(action.label),
                             style: TextStyle(
                               fontFamily: 'NotoSansSC',
                               fontSize: 12,
@@ -361,7 +414,7 @@ class _AiMenuDialog extends StatelessWidget {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              action.hint,
+                              _t(action.hint),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -446,10 +499,11 @@ class _AiStreamingState extends State<_AiStreaming> {
                   Icon(LucideIcons.sparkles, size: 15, color: c.accent),
                   const SizedBox(width: 8),
                   Text(
-                    '${widget.action.label}…',
+                    '${_t(widget.action.label)}…',
                     style: TextStyle(
-                      fontFamily: 'WenKai',
+                      fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
                       fontSize: 19,
+                      fontWeight: I18n.isEn ? FontWeight.w600 : null,
                       letterSpacing: 0.5,
                       color: c.ink,
                     ),
@@ -463,7 +517,7 @@ class _AiStreamingState extends State<_AiStreaming> {
                             widget.onCancel();
                           },
                     child: Text(
-                      _stopping ? '正在停止…' : '停止',
+                      _stopping ? _t('正在停止…') : _t('停止'),
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 11.5,
@@ -482,7 +536,7 @@ class _AiStreamingState extends State<_AiStreaming> {
                     builder: (context, text, _) {
                       if (text.isEmpty) {
                         return Text(
-                          '正在思考…',
+                          _t('正在思考…'),
                           style: TextStyle(
                             fontFamily: 'NotoSansSC',
                             fontSize: 12,
@@ -505,10 +559,11 @@ class _AiStreamingState extends State<_AiStreaming> {
               ),
               const SizedBox(height: 10),
               Text(
-                '生成时可以先读；完成后会请你预览，确认后才写进正文。',
+                _t('生成时可以先读；完成后会请你预览，确认后才写进正文。'),
                 style: TextStyle(
                   fontFamily: 'NotoSansSC',
                   fontSize: 9.5,
+                  height: I18n.isEn ? 1.5 : null,
                   color: c.inkMuted,
                 ),
               ),
@@ -552,7 +607,9 @@ class _AiStreamingState extends State<_AiStreaming> {
                   Icon(LucideIcons.sparkles, size: 15, color: c.accent),
                   const SizedBox(width: 7),
                   Text(
-                    'AI 的建议 · ${action.label}',
+                    _t('AI 的建议 · {action}', {
+                      'action': _t(action.label),
+                    }),
                     style: TextStyle(
                       fontFamily: 'NotoSansSC',
                       fontSize: 12,
@@ -598,7 +655,7 @@ class _AiStreamingState extends State<_AiStreaming> {
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(false),
                     child: Text(
-                      '放弃',
+                      _t('放弃'),
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 11,
@@ -617,7 +674,7 @@ class _AiStreamingState extends State<_AiStreaming> {
                     ),
                     onPressed: () => Navigator.of(context).pop(true),
                     child: Text(
-                      canReplace ? '替换选中' : '插入',
+                      canReplace ? _t('替换选中') : _t('插入'),
                       style: const TextStyle(fontSize: 11.5),
                     ),
                   ),

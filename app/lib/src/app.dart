@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'core/theme.dart';
+import 'core/i18n.dart';
 import 'core/theme_reveal.dart';
 import 'features/lock_screen.dart';
 import 'features/onboarding.dart';
@@ -19,6 +20,7 @@ class ThisNoteApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final settings = state.settings;
+    final lang = AppLang.fromCode(settings.language);
     // 界面字号只走 textScaler，主题里的字号保持 1.0，避免双重放大。
     final scale = settings.uiScale.clamp(0.9, 1.15);
     return ValueListenableBuilder<bool>(
@@ -26,7 +28,7 @@ class ThisNoteApp extends StatelessWidget {
       builder: (context, revealing, _) => RepaintBoundary(
         key: ThemeReveal.rootKey,
         child: MaterialApp(
-          title: '此记 · ThisNote',
+          title: lang == AppLang.en ? 'ThisNote' : '此记 · ThisNote',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.build(
             Brightness.light,
@@ -43,7 +45,7 @@ class ThisNoteApp extends StatelessWidget {
           // 圆孔边缘就会透出还没稳定的颜色。
           themeAnimationDuration:
               revealing ? Duration.zero : kThemeAnimationDuration,
-          locale: const Locale('zh', 'CN'),
+          locale: lang.locale,
           supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
           localizationsDelegates: GlobalMaterialLocalizations.delegates,
           scrollBehavior: const _AppScrollBehavior(),
@@ -119,7 +121,7 @@ class _StartupErrorScreen extends StatelessWidget {
                 const Seal(size: 44, radius: 12),
                 const SizedBox(height: 18),
                 Text(
-                  '暂时打不开这张纸',
+                  tr('暂时打不开这张纸'),
                   style: TextStyle(
                     fontFamily: 'WenKai',
                     fontSize: 24,
@@ -128,7 +130,7 @@ class _StartupErrorScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  '数据目录可能被占用或没有写入权限。你的文字不会被删除。',
+                  tr('数据目录可能被占用或没有写入权限。你的文字不会被删除。'),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontFamily: 'NotoSansSC',
@@ -154,7 +156,7 @@ class _StartupErrorScreen extends StatelessWidget {
                     foregroundColor: c.paper,
                   ),
                   onPressed: () => context.read<AppState>().retryInit(),
-                  child: const Text('重试'),
+                  child: Text(tr('重试')),
                 ),
               ],
             ),

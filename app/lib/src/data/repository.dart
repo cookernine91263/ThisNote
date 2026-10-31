@@ -25,7 +25,12 @@ class NoteStore {
   String get dataPath => root.path;
 
   /// Windows 上的默认数据目录。启动早期（还没 init）也要用，所以保持同步。
+  /// 设置 THISNOTE_DATA_DIR 可以临时换一个数据目录（便携版、截图与测试都用它）。
   static Directory defaultRootDirectory() {
+    final override = Platform.environment['THISNOTE_DATA_DIR'];
+    if (override != null && override.trim().isNotEmpty) {
+      return Directory(override.trim());
+    }
     final appData = Platform.environment['APPDATA'] ??
         Platform.environment['LOCALAPPDATA'] ??
         Directory.current.path;

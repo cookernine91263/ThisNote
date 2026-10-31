@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../core/i18n.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
@@ -17,6 +18,29 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   int _index = 0;
+
+  /// 文案以中文为源，英文放在 [_en] 里，切换语言时整页即时刷新。
+  static const _en = <String, String>{
+    '把日子写下来': 'Write your days down',
+    '日记、随笔、作文，都在同一张安静的纸上。\n不必完美，先让第一句话落下。':
+        'Diary, note, essay — all on the same quiet sheet.\nIt doesn\'t have to be perfect. Just let the first line land.',
+    '写一句': 'Write a line',
+    '选一种翻页手感': 'Choose how pages turn',
+    'PPT 里的「平滑」被搬到了这里：\n旧页收拢、新页展开；也可以选轻快的滑入。':
+        'The “Morph” transition from PowerPoint, brought here:\nthe old page folds away, the new one unfolds. Or pick a light slide-in.',
+    '继续': 'Continue',
+    '写得好，也排得美': 'Write well, set it beautifully',
+    '像 Word 一样加粗、倾斜、变细、配色；\n选中一句话，点一下花字，让它郑重一点。':
+        'Bold, italic, light and color — like Word.\nSelect a sentence, tap Flower Text, and give it a little ceremony.',
+    '试试花字': 'Try Flower Text',
+    '所有字，都在你手里': 'Every word stays with you',
+    '本地优先，不需要账号。\n自动保存、历史版本、密码锁与备份，都由你掌握。':
+        'Local-first. No account needed.\nAuto-save, version history, a passcode and backups are all yours to keep.',
+    '开始写': 'Start writing',
+    '下一步': 'Next',
+    '跳过': 'Skip',
+    '此记 · 本地优先的写作空间': 'ThisNote · A local-first writing space',
+  };
 
   static const _pages = [
     (
@@ -57,31 +81,43 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
+    final state = context.watch<AppState>();
     final page = _pages[_index];
+    final last = _index == _pages.length - 1;
     return Scaffold(
       backgroundColor: c.paper,
       body: Stack(
         children: [
           Positioned.fill(child: PaperGrain(color: c.ink, opacity: c.grain * 1.2)),
+          // 语言选择放在第一页右上角，任何一步都能切。
+          Positioned(
+            top: 24,
+            right: 32,
+            child: LanguageToggle(
+              value: state.settings.language,
+              onChanged: state.setLanguage,
+            ),
+          ),
           Positioned(
             right: 42,
-            top: 28,
+            top: 96,
             bottom: 28,
             child: IgnorePointer(
               child: Column(
                 children: [
-                  for (final ch in '此记'.split(''))
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Text(
-                        ch,
-                        style: TextStyle(
-                          fontFamily: 'WenKai',
-                          fontSize: 18,
-                          color: c.inkMuted.withValues(alpha: 0.28),
+                  if (!I18n.isEn)
+                    for (final ch in '此记'.split(''))
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Text(
+                          ch,
+                          style: TextStyle(
+                            fontFamily: 'WenKai',
+                            fontSize: 18,
+                            color: c.inkMuted.withValues(alpha: 0.28),
+                          ),
                         ),
                       ),
-                    ),
                   const Spacer(),
                   const Seal(size: 26, radius: 7),
                 ],
@@ -123,17 +159,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           ),
                           const SizedBox(height: 26),
                           Text(
-                            page.$2,
+                            tr(page.$2, null, _en),
+                            textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontFamily: 'WenKai',
-                              fontSize: 34,
-                              letterSpacing: 2,
+                              fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
+                              fontSize: I18n.isEn ? 30 : 34,
+                              letterSpacing: I18n.isEn ? 0.4 : 2,
+                              fontWeight: I18n.isEn ? FontWeight.w600 : null,
                               color: c.ink,
                             ),
                           ),
                           const SizedBox(height: 14),
                           Text(
-                            page.$3,
+                            tr(page.$3, null, _en),
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontFamily: 'NotoSansSC',
@@ -170,14 +208,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       children: [
                         TextButton(
                           onPressed: () async {
-                            if (_index < _pages.length - 1) {
+                            if (!last) {
                               setState(() => _index++);
                             } else {
                               await _finish();
                             }
                           },
                           child: Text(
-                            _index == _pages.length - 1 ? '开始写' : '下一步',
+                            tr(last ? '开始写' : '下一步', null, _en),
                             style: TextStyle(
                               fontFamily: 'NotoSansSC',
                               fontSize: 12,
@@ -189,7 +227,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         TextButton(
                           onPressed: _finish,
                           child: Text(
-                            '跳过',
+                            tr('跳过', null, _en),
                             style: TextStyle(
                               fontFamily: 'NotoSansSC',
                               fontSize: 11,
@@ -201,7 +239,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '此记 · 本地优先的写作空间',
+                      tr('此记 · 本地优先的写作空间', null, _en),
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 9,
@@ -215,6 +253,92 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 中英切换的小胶囊。引导页和设置页共用。
+class LanguageToggle extends StatelessWidget {
+  const LanguageToggle({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.compact = false,
+  });
+
+  final String value;
+  final ValueChanged<String> onChanged;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: c.surface.withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c.line),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _LangChip(
+            label: '中文',
+            active: value != 'en',
+            compact: compact,
+            onTap: () => onChanged('zh'),
+          ),
+          _LangChip(
+            label: 'English',
+            active: value == 'en',
+            compact: compact,
+            onTap: () => onChanged('en'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LangChip extends StatelessWidget {
+  const _LangChip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+    required this.compact,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: Motion.fast,
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 10 : 13,
+          vertical: compact ? 4 : 6,
+        ),
+        decoration: BoxDecoration(
+          color: active ? c.ink : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'NotoSansSC',
+            fontSize: compact ? 10 : 11,
+            letterSpacing: 0.3,
+            color: active ? c.paper : c.inkMuted,
+          ),
+        ),
       ),
     );
   }

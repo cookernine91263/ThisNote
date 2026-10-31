@@ -2,9 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
 import 'note_fonts.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。字体名与描述来自 [noteFonts]，
+/// 这里按中文原文查表，查不到就保留中文。
+const Map<String, String> _en = <String, String>{
+  '选一种字体': 'Choose a font',
+  '中英日都在这张纸上': 'Chinese, English, Japanese — all on this sheet',
+  '黑体': 'Sans',
+  '宋体': 'Serif',
+  '文楷': 'WenKai',
+  '手写': 'Brush',
+  '小薇': 'XiaoWei',
+  '细黑': 'Light',
+  '思源黑体 · 默认，安静清楚': 'Noto Sans · default, quiet and clear',
+  '思源宋体 · 长文与书信': 'Noto Serif · for long reads and letters',
+  '霞鹜文楷 · 手写的温度': 'LXGW WenKai · a handwritten warmth',
+  '马善政毛笔 · 一句题目': 'Ma Shan Zheng brush · for one title',
+  '站酷小薇 · 雅致的标题': 'ZCOOL XiaoWei · elegant headings',
+  '思源细体 · 轻盈的呼吸': 'Noto Sans Light · a light breath',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
 
 Future<String?> showFontPicker(
   BuildContext context, {
@@ -60,7 +82,7 @@ class _FontDialog extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '选一种字体',
+                          _t('选一种字体'),
                           style: TextStyle(
                             fontFamily: 'WenKai',
                             fontSize: 23,
@@ -69,7 +91,7 @@ class _FontDialog extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '中英日都在这张纸上',
+                          _t('中英日都在这张纸上'),
                           style: TextStyle(
                             fontFamily: 'NotoSansSC',
                             fontSize: 10,
@@ -164,7 +186,7 @@ class _FontRow extends StatelessWidget {
                       Row(
                         children: [
                           Text(
-                            font.label,
+                            _t(font.label),
                             style: TextStyle(
                               fontFamily: 'NotoSansSC',
                               fontSize: 12,
@@ -175,7 +197,7 @@ class _FontRow extends StatelessWidget {
                           const SizedBox(width: 8),
                           Flexible(
                             child: Text(
-                              font.description,
+                              _t(font.description),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../core/i18n.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../data/models.dart';
@@ -18,7 +19,10 @@ class _FolderTreeState extends State<FolderTree> {
   bool _open = true;
 
   Future<void> _create(String? parentId) async {
-    final name = await _askName(context, parentId == null ? '新建文件夹' : '新建子文件夹');
+    final name = await _askName(
+      context,
+      _t(parentId == null ? '新建文件夹' : '新建子文件夹'),
+    );
     if (name != null && name.trim().isNotEmpty) {
       await widget.state.createFolder(name, parentId: parentId);
       if (mounted) setState(() => _open = true);
@@ -34,7 +38,11 @@ class _FolderTreeState extends State<FolderTree> {
         backgroundColor: c.surface,
         title: Text(
           title,
-          style: TextStyle(fontFamily: 'WenKai', fontSize: 21, color: c.ink),
+          style: TextStyle(
+            fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
+            fontSize: 21,
+            color: c.ink,
+          ),
         ),
         content: TextField(
           controller: controller,
@@ -45,7 +53,7 @@ class _FolderTreeState extends State<FolderTree> {
             color: c.ink,
           ),
           decoration: InputDecoration(
-            hintText: '例如：日记 / 小说 / 读书',
+            hintText: _t('例如：日记 / 小说 / 读书'),
             hintStyle: TextStyle(
               fontFamily: 'NotoSansSC',
               fontSize: 12,
@@ -71,7 +79,7 @@ class _FolderTreeState extends State<FolderTree> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text('取消', style: TextStyle(color: c.inkMuted)),
+            child: Text(_t('取消'), style: TextStyle(color: c.inkMuted)),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -79,7 +87,7 @@ class _FolderTreeState extends State<FolderTree> {
               foregroundColor: c.paper,
             ),
             onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('建好'),
+            child: Text(_t('建好')),
           ),
         ],
       ),
@@ -94,10 +102,10 @@ class _FolderTreeState extends State<FolderTree> {
       context: context,
       color: c.surface,
       position: const RelativeRect.fromLTRB(80, 160, 0, 0),
-      items: const [
-        PopupMenuItem(value: 'new', child: Text('新建子文件夹')),
-        PopupMenuItem(value: 'rename', child: Text('重命名')),
-        PopupMenuItem(value: 'delete', child: Text('删除文件夹')),
+      items: [
+        PopupMenuItem(value: 'new', child: Text(_t('新建子文件夹'))),
+        PopupMenuItem(value: 'rename', child: Text(_t('重命名'))),
+        PopupMenuItem(value: 'delete', child: Text(_t('删除文件夹'))),
       ],
     );
     if (!mounted || action == null) return;
@@ -106,7 +114,7 @@ class _FolderTreeState extends State<FolderTree> {
         await _create(folder.id);
         break;
       case 'rename':
-        final name = await _askName(context, '重命名');
+        final name = await _askName(context, _t('重命名'));
         if (name != null && name.trim().isNotEmpty) {
           await widget.state.renameFolder(folder.id, name);
         }
@@ -114,9 +122,9 @@ class _FolderTreeState extends State<FolderTree> {
       case 'delete':
         final ok = await showConfirm(
           context,
-          title: '删除这个文件夹？',
-          message: '里面的笔记会移到上一层，不会被删除。',
-          confirmLabel: '删除',
+          title: _t('删除这个文件夹？'),
+          message: _t('里面的笔记会移到上一层，不会被删除。'),
+          confirmLabel: _t('删除'),
           danger: true,
         );
         if (ok) await widget.state.deleteFolder(folder.id);
@@ -149,7 +157,7 @@ class _FolderTreeState extends State<FolderTree> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      '文件夹',
+                      _t('文件夹'),
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 9.5,
@@ -163,7 +171,7 @@ class _FolderTreeState extends State<FolderTree> {
               const Spacer(),
               SoftIconButton(
                 icon: LucideIcons.folderPlus,
-                tooltip: '新建文件夹',
+                tooltip: _t('新建文件夹'),
                 size: 26,
                 onPressed: () => _create(null),
               ),
@@ -183,7 +191,7 @@ class _FolderTreeState extends State<FolderTree> {
                       child: Row(
                         children: [
                           _RootChip(
-                            label: '全部',
+                            label: _t('全部'),
                             selected: state.folderFilter == null,
                             onTap: () => state.setFolderFilter(null),
                             onDropNote: (id) =>
@@ -191,7 +199,7 @@ class _FolderTreeState extends State<FolderTree> {
                           ),
                           const SizedBox(width: 5),
                           _RootChip(
-                            label: '未分类',
+                            label: _t('未分类'),
                             selected: state.folderFilter == '__unfiled__',
                             onTap: () =>
                                 state.setFolderFilter('__unfiled__'),
@@ -461,3 +469,23 @@ class _FolderGhost extends StatelessWidget {
     );
   }
 }
+
+/// 英文文案。键是界面里的中文原文，值是对应的英文。
+const Map<String, String> _en = <String, String>{
+  '新建文件夹': 'New folder',
+  '新建子文件夹': 'New subfolder',
+  '例如：日记 / 小说 / 读书': 'e.g. Diary / Novel / Reading',
+  '取消': 'Cancel',
+  '建好': 'Create',
+  '重命名': 'Rename',
+  '删除文件夹': 'Delete folder',
+  '删除这个文件夹？': 'Delete this folder?',
+  '里面的笔记会移到上一层，不会被删除。':
+      'The notes inside move up a level; nothing gets deleted.',
+  '删除': 'Delete',
+  '文件夹': 'Folder',
+  '全部': 'All',
+  '未分类': 'Unfiled',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);

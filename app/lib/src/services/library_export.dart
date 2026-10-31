@@ -2,9 +2,15 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../core/i18n.dart';
 import '../data/models.dart';
 import '../data/repository.dart';
 import 'exporter.dart';
+
+/// 没有标题的笔记导出时用的占位名。
+const _en = <String, String>{
+  '无题': 'Untitled',
+};
 
 /// 把整库笔记导出成一个 Markdown 文件夹（附 assets 图片）。
 /// 返回导出的篇数。
@@ -21,7 +27,9 @@ Future<int> exportLibraryMarkdown(
     final note = await store.loadNote(meta.id);
     if (note == null) continue;
     final markdown = exporter.markdown(note);
-    final base = _safeName(note.title.trim().isEmpty ? '无题' : note.title.trim());
+    final base = _safeName(
+      note.title.trim().isEmpty ? tr('无题', null, _en) : note.title.trim(),
+    );
     var name = '$base.md';
     var suffix = 2;
     while (!used.add(name)) {
@@ -53,5 +61,5 @@ String _safeName(String title) {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
   final cut = cleaned.length > 60 ? cleaned.substring(0, 60) : cleaned;
-  return cut.isEmpty ? '无题' : cut;
+  return cut.isEmpty ? tr('无题', null, _en) : cut;
 }

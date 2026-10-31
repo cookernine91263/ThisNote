@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../core/i18n.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。
+const Map<String, String> _en = <String, String>{
+  '此记': 'ThisNote',
+  '正在展开纸页': 'Unfolding the page',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
 
 class Seal extends StatelessWidget {
   const Seal({super.key, this.size = 34, this.radius = 9});
@@ -134,21 +143,22 @@ class _SplashScreenState extends State<SplashScreen>
               ),
               const SizedBox(height: 22),
               Text(
-                '此记',
+                _t('此记'),
                 style: TextStyle(
-                  fontFamily: 'WenKai',
+                  fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
                   fontSize: 28,
-                  letterSpacing: 6,
+                  fontWeight: I18n.isEn ? FontWeight.w600 : null,
+                  letterSpacing: I18n.isEn ? 1.2 : 6,
                   color: c.ink,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
-                '正在展开纸页',
+                _t('正在展开纸页'),
                 style: TextStyle(
                   fontFamily: 'NotoSansSC',
                   fontSize: 11.5,
-                  letterSpacing: 2,
+                  letterSpacing: I18n.isEn ? 0.6 : 2,
                   color: c.inkMuted,
                 ),
               ),

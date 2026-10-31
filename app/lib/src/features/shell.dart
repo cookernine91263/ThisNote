@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../core/i18n.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
 import '../core/theme_reveal.dart';
@@ -306,11 +307,11 @@ class _MobileNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
-    final items = const [
-      (LucideIcons.sun, '今日'),
-      (LucideIcons.calendarDays, '日历'),
-      (LucideIcons.chartNoAxesColumn, '统计'),
-      (LucideIcons.settings, '我的'),
+    final items = [
+      (LucideIcons.sun, _t('今日')),
+      (LucideIcons.calendarDays, _t('日历')),
+      (LucideIcons.chartNoAxesColumn, _t('统计')),
+      (LucideIcons.settings, _t('我的')),
     ];
     return Container(
       decoration: BoxDecoration(
@@ -417,54 +418,54 @@ class _Rail extends StatelessWidget {
         children: [
           const SizedBox(height: 16),
           Tooltip(
-            message: '此记 · ThisNote',
+            message: _t('此记 · ThisNote'),
             child: const Seal(size: 32, radius: 9),
           ),
           const SizedBox(height: 20),
           _RailItem(
             icon: LucideIcons.sun,
-            label: '今日',
+            label: _t('今日'),
             active: active == 'today',
             onTap: () => state.setView('today'),
           ),
           _RailItem(
             icon: LucideIcons.library,
-            label: '全部',
+            label: _t('全部'),
             active: active == 'all',
             onTap: () => state.setView('all'),
           ),
           _RailItem(
             icon: LucideIcons.calendarDays,
-            label: '日历',
+            label: _t('日历'),
             active: active == 'calendar',
             onTap: () => state.setView('calendar'),
           ),
           _RailItem(
             icon: LucideIcons.tag,
-            label: '标签',
+            label: _t('标签'),
             active: active == 'tags',
             onTap: () => state.setView('tags'),
           ),
           _RailItem(
             icon: LucideIcons.chartNoAxesColumn,
-            label: '统计',
+            label: _t('统计'),
             active: active == 'stats',
             onTap: () => state.setView('stats'),
           ),
           const Spacer(),
           _RailItem(
             icon: LucideIcons.command,
-            label: '命令',
+            label: _t('命令'),
             active: false,
             onTap: onPalette,
-            tooltip: '命令面板 · Ctrl K',
+            tooltip: _t('命令面板 · Ctrl K'),
           ),
           _RailItem(
             icon: LucideIcons.focus,
-            label: '专注',
+            label: _t('专注'),
             active: zen,
             onTap: onToggleZen,
-            tooltip: '专注模式 · Ctrl Shift F',
+            tooltip: _t('专注模式 · Ctrl Shift F'),
           ),
           _RailItem(
             icon: state.settings.themeMode == ThemeMode.dark
@@ -472,7 +473,7 @@ class _Rail extends StatelessWidget {
                 : state.settings.themeMode == ThemeMode.light
                     ? LucideIcons.sun
                     : LucideIcons.sunMoon,
-            label: '外观',
+            label: _t('外观'),
             active: false,
             onTap: () {},
             onTapPosition: (origin) {
@@ -487,17 +488,17 @@ class _Rail extends StatelessWidget {
                 apply: () => state.setThemeMode(next),
               );
             },
-            tooltip: '切换外观',
+            tooltip: _t('切换外观'),
           ),
           _RailItem(
             icon: LucideIcons.trash2,
-            label: '回收',
+            label: _t('回收'),
             active: active == 'trash',
             onTap: () => state.setView('trash'),
           ),
           _RailItem(
             icon: LucideIcons.settings,
-            label: '设置',
+            label: _t('设置'),
             active: active == 'settings',
             onTap: () => state.setView('settings'),
           ),
@@ -667,24 +668,26 @@ class _WindowTitleBarState extends State<WindowTitleBar> with WindowListener {
                       const Seal(size: 21, radius: 6),
                       const SizedBox(width: 8),
                       Text(
-                        '此记',
+                        _t('此记'),
                         style: TextStyle(
-                          fontFamily: 'WenKai',
+                          fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
                           fontSize: 12.5,
-                          letterSpacing: 1,
+                          letterSpacing: I18n.isEn ? 0.4 : 1,
                           color: c.inkSoft,
                         ),
                       ),
-                      const SizedBox(width: 5),
-                      Text(
-                        'ThisNote',
-                        style: TextStyle(
-                          fontFamily: 'NotoSansSC',
-                          fontSize: 9,
-                          letterSpacing: 0.6,
-                          color: c.inkMuted,
+                      if (!I18n.isEn) ...[
+                        const SizedBox(width: 5),
+                        Text(
+                          'ThisNote',
+                          style: TextStyle(
+                            fontFamily: 'NotoSansSC',
+                            fontSize: 9,
+                            letterSpacing: 0.6,
+                            color: c.inkMuted,
+                          ),
                         ),
-                      ),
+                      ],
                       if (state.current != null) ...[
                         const SizedBox(width: 14),
                         Container(width: 1, height: 12, color: c.line),
@@ -694,7 +697,7 @@ class _WindowTitleBarState extends State<WindowTitleBar> with WindowListener {
                             duration: Motion.fast,
                             child: Text(
                               state.current!.title.trim().isEmpty
-                                  ? '无题'
+                                  ? _t('无题')
                                   : state.current!.title.trim(),
                               key: ValueKey(state.current!.id),
                               maxLines: 1,
@@ -716,7 +719,7 @@ class _WindowTitleBarState extends State<WindowTitleBar> with WindowListener {
           ),
           _CaptionButton(
             icon: _maximized ? LucideIcons.minimize : LucideIcons.maximize,
-            tooltip: _maximized ? '还原' : '最大化',
+            tooltip: _t(_maximized ? '还原' : '最大化'),
             onTap: () async {
               if (await windowManager.isMaximized()) {
                 await windowManager.unmaximize();
@@ -727,12 +730,12 @@ class _WindowTitleBarState extends State<WindowTitleBar> with WindowListener {
           ),
           _CaptionButton(
             icon: LucideIcons.minus,
-            tooltip: '最小化',
+            tooltip: _t('最小化'),
             onTap: () => windowManager.minimize(),
           ),
           _CaptionButton(
             icon: LucideIcons.x,
-            tooltip: '关闭',
+            tooltip: _t('关闭'),
             close: true,
             onTap: () => windowManager.close(),
           ),
@@ -790,3 +793,34 @@ class _CaptionButton extends StatelessWidget {
     );
   }
 }
+
+/// 英文文案。键是界面里的中文原文，值是对应的英文。
+const Map<String, String> _en = <String, String>{
+  // 侧边栏（76px，英文标签尽量不超过 8 个字符）
+  '今日': 'Today',
+  '全部': 'All',
+  '日历': 'Calendar',
+  '标签': 'Tags',
+  '统计': 'Stats',
+  '命令': 'Commands',
+  '专注': 'Focus',
+  '外观': 'Appearance',
+  '回收': 'Trash',
+  '设置': 'Settings',
+  // 移动端底部导航
+  '我的': 'Me',
+  // 悬停提示
+  '此记 · ThisNote': 'ThisNote',
+  '命令面板 · Ctrl K': 'Command palette · Ctrl K',
+  '专注模式 · Ctrl Shift F': 'Focus mode · Ctrl Shift F',
+  '切换外观': 'Toggle appearance',
+  // 标题栏
+  '此记': 'ThisNote',
+  '无题': 'Untitled',
+  '还原': 'Restore',
+  '最大化': 'Maximize',
+  '最小化': 'Minimize',
+  '关闭': 'Close',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);

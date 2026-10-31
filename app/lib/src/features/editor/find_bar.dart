@@ -2,9 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
 import '../../state/app_state.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。
+const Map<String, String> _en = <String, String>{
+  '查找…': 'Find…',
+  '上一处 · Shift Enter': 'Previous · Shift Enter',
+  '下一处 · Enter': 'Next · Enter',
+  '收起替换': 'Hide replace',
+  '替换': 'Replace',
+  '关闭 · Esc': 'Close · Esc',
+  '替换为…': 'Replace with…',
+  '全部': 'All',
+  '无结果': 'No results',
+  '{total} 处': '{total} found',
+  '区分大小写：开': 'Match case: on',
+  '区分大小写：关': 'Match case: off',
+  '先选中一处命中再替换': 'Select a match first, then replace',
+  '没有可替换的内容': 'Nothing to replace',
+  '已替换 {count} 处': 'Replaced {count}',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
 
 /// 编辑器内的查找 / 替换条。Ctrl+F 打开查找，Ctrl+H 打开并展开替换。
 class FindBar extends StatefulWidget {
@@ -123,7 +145,7 @@ class _FindBarState extends State<FindBar> {
                         ),
                         decoration: InputDecoration(
                           isDense: true,
-                          hintText: '查找…',
+                          hintText: _t('查找…'),
                           hintStyle: TextStyle(
                             fontFamily: 'NotoSansSC',
                             fontSize: 12.5,
@@ -137,12 +159,12 @@ class _FindBarState extends State<FindBar> {
                     _Counter(session: session),
                     _BarIcon(
                       icon: LucideIcons.chevronUp,
-                      tooltip: '上一处 · Shift Enter',
+                      tooltip: _t('上一处 · Shift Enter'),
                       onPressed: () => session.findNext(backwards: true),
                     ),
                     _BarIcon(
                       icon: LucideIcons.chevronDown,
-                      tooltip: '下一处 · Enter',
+                      tooltip: _t('下一处 · Enter'),
                       onPressed: () => session.findNext(),
                     ),
                     _CaseToggle(session: session),
@@ -150,12 +172,14 @@ class _FindBarState extends State<FindBar> {
                       icon: session.findReplaceVisible
                           ? LucideIcons.chevronUp
                           : LucideIcons.chevronDown,
-                      tooltip: session.findReplaceVisible ? '收起替换' : '替换',
+                      tooltip: _t(
+                        session.findReplaceVisible ? '收起替换' : '替换',
+                      ),
                       onPressed: session.toggleReplaceRow,
                     ),
                     _BarIcon(
                       icon: LucideIcons.x,
-                      tooltip: '关闭 · Esc',
+                      tooltip: _t('关闭 · Esc'),
                       onPressed: session.closeFind,
                     ),
                   ],
@@ -186,7 +210,7 @@ class _FindBarState extends State<FindBar> {
                           ),
                           decoration: InputDecoration(
                             isDense: true,
-                            hintText: '替换为…',
+                            hintText: _t('替换为…'),
                             hintStyle: TextStyle(
                               fontFamily: 'NotoSansSC',
                               fontSize: 12.5,
@@ -204,9 +228,9 @@ class _FindBarState extends State<FindBar> {
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                        child: const Text(
-                          '替换',
-                          style: TextStyle(
+                        child: Text(
+                          _t('替换'),
+                          style: const TextStyle(
                             fontFamily: 'NotoSansSC',
                             fontSize: 11.5,
                           ),
@@ -219,9 +243,9 @@ class _FindBarState extends State<FindBar> {
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                        child: const Text(
-                          '全部',
-                          style: TextStyle(
+                        child: Text(
+                          _t('全部'),
+                          style: const TextStyle(
                             fontFamily: 'NotoSansSC',
                             fontSize: 11.5,
                           ),
@@ -241,16 +265,20 @@ class _FindBarState extends State<FindBar> {
   void _replaceOne(BuildContext context) {
     final replaced = widget.session.replaceCurrent();
     if (!replaced && widget.session.findQuery.isNotEmpty) {
-      showToast(context, '先选中一处命中再替换', icon: LucideIcons.info);
+      showToast(context, _t('先选中一处命中再替换'), icon: LucideIcons.info);
     }
   }
 
   void _replaceAll(BuildContext context) {
     final count = widget.session.replaceAll();
     if (count == 0) {
-      showToast(context, '没有可替换的内容');
+      showToast(context, _t('没有可替换的内容'));
     } else {
-      showToast(context, '已替换 $count 处', icon: LucideIcons.check);
+      showToast(
+        context,
+        _t('已替换 {count} 处', {'count': count}),
+        icon: LucideIcons.check,
+      );
     }
   }
 }
@@ -267,10 +295,10 @@ class _Counter extends StatelessWidget {
     final current = session.findCurrent;
     if (session.findQuery.isEmpty) return const SizedBox(width: 8);
     final text = total == 0
-        ? '无结果'
+        ? _t('无结果')
         : current > 0
             ? '$current/$total'
-            : '$total 处';
+            : _t('{total} 处', {'total': total});
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Text(
@@ -294,7 +322,7 @@ class _CaseToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     return Tooltip(
-      message: session.findCaseSensitive ? '区分大小写：开' : '区分大小写：关',
+      message: _t(session.findCaseSensitive ? '区分大小写：开' : '区分大小写：关'),
       child: GestureDetector(
         onTap: session.toggleFindCase,
         child: Container(

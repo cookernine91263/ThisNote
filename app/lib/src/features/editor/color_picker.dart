@@ -4,9 +4,28 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
 import '../../state/app_state.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。
+const Map<String, String> _en = <String, String>{
+  '高亮颜色': 'Highlight color',
+  '文字颜色': 'Text color',
+  '转一圈，挑一个今天心情的颜色': 'Spin the wheel, pick a color for today',
+  '高亮底色': 'Highlight background',
+  '保存到常用': 'Save to favorites',
+  '已保存 {hex}': 'Saved {hex}',
+  '明度': 'Brightness',
+  '常用': 'Saved',
+  '内置': 'Built-in',
+  '清除颜色': 'Clear color',
+  '用这个颜色': 'Use this color',
+  '{hex} · 长按删除': '{hex} · long-press to delete',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
 
 const _textPalette = <String>[
   '#211E19',
@@ -108,7 +127,7 @@ class _ColorDialogState extends State<_ColorDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.background ? '高亮颜色' : '文字颜色',
+                          _t(widget.background ? '高亮颜色' : '文字颜色'),
                           style: TextStyle(
                             fontFamily: 'WenKai',
                             fontSize: 22,
@@ -117,7 +136,7 @@ class _ColorDialogState extends State<_ColorDialog> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '转一圈，挑一个今天心情的颜色',
+                          _t('转一圈，挑一个今天心情的颜色'),
                           style: TextStyle(
                             fontFamily: 'NotoSansSC',
                             fontSize: 9.5,
@@ -169,7 +188,7 @@ class _ColorDialogState extends State<_ColorDialog> {
                             ),
                           ),
                           Text(
-                            widget.background ? '高亮底色' : '文字颜色',
+                            _t(widget.background ? '高亮底色' : '文字颜色'),
                             style: TextStyle(
                               fontFamily: 'NotoSansSC',
                               fontSize: 9.5,
@@ -180,12 +199,15 @@ class _ColorDialogState extends State<_ColorDialog> {
                       ),
                     ),
                     Tooltip(
-                      message: '保存到常用',
+                      message: _t('保存到常用'),
                       child: GestureDetector(
                         onTap: () async {
                           await state.saveColor(_hex);
                           if (context.mounted) {
-                            showToast(context, '已保存 $_hex');
+                            showToast(
+                              context,
+                              _t('已保存 {hex}', {'hex': _hex}),
+                            );
                           }
                         },
                         child: Container(
@@ -227,7 +249,7 @@ class _ColorDialogState extends State<_ColorDialog> {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      '明度',
+                      _t('明度'),
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 9.5,
@@ -270,7 +292,7 @@ class _ColorDialogState extends State<_ColorDialog> {
                 const SizedBox(height: 6),
                 if (saved.isNotEmpty) ...[
                   Text(
-                    '常用',
+                    _t('常用'),
                     style: TextStyle(
                       fontFamily: 'NotoSansSC',
                       fontSize: 9.5,
@@ -294,7 +316,7 @@ class _ColorDialogState extends State<_ColorDialog> {
                   const SizedBox(height: 10),
                 ],
                 Text(
-                  '内置',
+                  _t('内置'),
                   style: TextStyle(
                     fontFamily: 'NotoSansSC',
                     fontSize: 9.5,
@@ -320,7 +342,7 @@ class _ColorDialogState extends State<_ColorDialog> {
                     TextButton(
                       onPressed: () => Navigator.of(context).pop('clear'),
                       child: Text(
-                        '清除颜色',
+                        _t('清除颜色'),
                         style: TextStyle(
                           fontFamily: 'NotoSansSC',
                           fontSize: 10.5,
@@ -339,7 +361,7 @@ class _ColorDialogState extends State<_ColorDialog> {
                         ),
                       ),
                       onPressed: () => Navigator.of(context).pop(_hex),
-                      child: const Text('用这个颜色'),
+                      child: Text(_t('用这个颜色')),
                     ),
                   ],
                 ),
@@ -370,7 +392,9 @@ class _Swatch extends StatelessWidget {
     final c = AppPalette.of(context);
     final color = _colorFromHex(hex);
     return Tooltip(
-      message: onLongPress == null ? hex : '$hex · 长按删除',
+      message: onLongPress == null
+          ? hex
+          : _t('{hex} · 长按删除', {'hex': hex}),
       child: GestureDetector(
         onTap: onTap,
         onLongPress: onLongPress,

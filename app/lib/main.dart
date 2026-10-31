@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'src/app.dart';
+import 'src/core/i18n.dart';
 import 'src/data/repository.dart';
 import 'src/state/app_state.dart';
 
@@ -47,6 +48,12 @@ Future<void> main() async {
     await state.init();
   } catch (e) {
     state.startupError = e.toString();
+  }
+  // 任务栏上显示的名字也跟着语言走；窗口本身无边框，标题只对系统可见。
+  if (Platform.isWindows) {
+    await windowManager.setTitle(
+      I18n.lang == AppLang.en ? 'ThisNote' : '此记 · ThisNote',
+    );
   }
   runApp(
     ChangeNotifierProvider.value(

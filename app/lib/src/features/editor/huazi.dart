@@ -6,10 +6,47 @@ import '../../core/format.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/i18n.dart';
 import '../../core/motion.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
 import '../../state/app_state.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。预设的 id 与颜色不动，只翻名字与描述。
+const Map<String, String> _en = <String, String>{
+  '花字': 'Flower Text',
+  '文楷 · 大字号': 'WenKai · Large',
+  '小': 'Small',
+  '中': 'Medium',
+  '大': 'Large',
+  '落笔即心安': 'Settle.',
+  '选中文字后，选一种语气。字体为霞鹜文楷（OFL），中英日通用。':
+      'Select some text, then pick a tone. Set in LXGW WenKai (OFL) — Chinese, English and Japanese alike.',
+  '提示：花字是字符样式，可随时清除，不会改变原文。':
+      'Tip: flower text is a character style. Clear it any time — the words stay the same.',
+  '还原正文': 'Back to Body',
+  '已还原为正文样式': 'Back to Body style',
+  '先选中一段文字，再点花字': 'Select some text first, then tap Flower Text',
+  '已应用花字「{name}」': 'Flower Text “{name}” applied',
+  '朱砂': 'Cinnabar',
+  '青黛': 'Indigo',
+  '鎏金': 'Gilt',
+  '墨韵': 'Ink',
+  '落霞': 'Sunset',
+  '雪松': 'Cedar',
+  '夜航': 'Night Flight',
+  '糖果': 'Candy',
+  '一点郑重': 'With care',
+  '远山与雾': 'Mist and hills',
+  '旧书页的光': 'Old page light',
+  '浓淡之间': 'Light and dark',
+  '傍晚的橘': 'Evening orange',
+  '安静的绿': 'Quiet green',
+  '深蓝的星': 'Blue starlight',
+  '轻一点': 'Lighter touch',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
 
 class HuaziPreset {
   const HuaziPreset({
@@ -181,7 +218,7 @@ Future<void> showHuaziGallery(
   EditorSession session,
 ) async {
   if (session.controller.selection.isCollapsed) {
-    showToast(context, '先选中一段文字，再点花字', icon: LucideIcons.textCursor);
+    showToast(context, _t('先选中一段文字，再点花字'), icon: LucideIcons.textCursor);
     return;
   }
   final mobile = MediaQuery.sizeOf(context).width < 760;
@@ -250,6 +287,34 @@ class _HuaziGallery extends StatefulWidget {
 class _HuaziGalleryState extends State<_HuaziGallery> {
   String _size = 'm';
 
+  /// 小 / 中 / 大 的尺寸选择。桌面上贴着标题，手机上单独一行。
+  List<Widget> _sizeChips(AppPalette c) => [
+        for (final s in const [('s', '小'), ('m', '中'), ('l', '大')])
+          Padding(
+            padding: const EdgeInsets.only(left: 3),
+            child: GestureDetector(
+              onTap: () => setState(() => _size = s.$1),
+              child: AnimatedContainer(
+                duration: Motion.fast,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _size == s.$1 ? c.ink : Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  _t(s.$2),
+                  style: TextStyle(
+                    fontFamily: 'NotoSansSC',
+                    fontSize: 10.5,
+                    color: _size == s.$1 ? c.paper : c.inkMuted,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ];
+
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
@@ -262,7 +327,7 @@ class _HuaziGalleryState extends State<_HuaziGallery> {
           Row(
             children: [
               Text(
-                '花字',
+                _t('花字'),
                 style: TextStyle(
                   fontFamily: 'WenKai',
                   fontSize: 25,
@@ -278,7 +343,7 @@ class _HuaziGalleryState extends State<_HuaziGallery> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  '文楷 · 大字号',
+                  _t('文楷 · 大字号'),
                   style: TextStyle(
                     fontFamily: 'NotoSansSC',
                     fontSize: 9,
@@ -288,41 +353,27 @@ class _HuaziGalleryState extends State<_HuaziGallery> {
                 ),
               ),
               const Spacer(),
-              for (final s in const [('s', '小'), ('m', '中'), ('l', '大')])
-                Padding(
-                  padding: const EdgeInsets.only(left: 3),
-                  child: GestureDetector(
-                    onTap: () => setState(() => _size = s.$1),
-                    child: AnimatedContainer(
-                      duration: Motion.fast,
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _size == s.$1 ? c.ink : Colors.transparent,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        s.$2,
-                        style: TextStyle(
-                          fontFamily: 'NotoSansSC',
-                          fontSize: 10.5,
-                          color: _size == s.$1 ? c.paper : c.inkMuted,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+              // 英文尺寸词比中文宽，手机上另起一行，免得把关闭按钮挤出面板。
+              if (!widget.mobile) ..._sizeChips(c),
               const SizedBox(width: 8),
               SoftIconButton(
                 icon: LucideIcons.x,
                 size: 28,
-                tooltip: '关闭',
+                tooltip: _t('关闭'),
                 onPressed: () => Navigator.of(context).pop(),
               ),
             ],
           ),
+          if (widget.mobile) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: _sizeChips(c),
+            ),
+          ],
           const SizedBox(height: 4),
           Text(
-            '选中文字后，选一种语气。字体为霞鹜文楷（OFL），中英日通用。',
+            _t('选中文字后，选一种语气。字体为霞鹜文楷（OFL），中英日通用。'),
             style: TextStyle(
               fontFamily: 'NotoSansSC',
               fontSize: 10.5,
@@ -356,7 +407,9 @@ class _HuaziGalleryState extends State<_HuaziGallery> {
                         Navigator.of(context).pop();
                         showToast(
                           context,
-                          '已应用花字「${preset.name}」',
+                          _t('已应用花字「{name}」', {
+                            'name': _t(preset.name),
+                          }),
                           icon: LucideIcons.sparkles,
                         );
                       }
@@ -371,23 +424,24 @@ class _HuaziGalleryState extends State<_HuaziGallery> {
             children: [
               Icon(LucideIcons.type, size: 12, color: c.inkMuted),
               const SizedBox(width: 6),
-              Text(
-                '提示：花字是字符样式，可随时清除，不会改变原文。',
-                style: TextStyle(
-                  fontFamily: 'NotoSansSC',
-                  fontSize: 9.5,
-                  color: c.inkMuted,
+              Expanded(
+                child: Text(
+                  _t('提示：花字是字符样式，可随时清除，不会改变原文。'),
+                  style: TextStyle(
+                    fontFamily: 'NotoSansSC',
+                    fontSize: 9.5,
+                    color: c.inkMuted,
+                  ),
                 ),
               ),
-              const Spacer(),
               TextButton(
                 onPressed: () {
                   widget.session.clearFont();
                   Navigator.of(context).pop();
-                  showToast(context, '已还原为正文样式');
+                  showToast(context, _t('已还原为正文样式'));
                 },
                 child: Text(
-                  '还原正文',
+                  _t('还原正文'),
                   style: TextStyle(fontFamily: 'NotoSansSC', fontSize: 11, color: c.inkMuted),
                 ),
               ),
@@ -450,7 +504,7 @@ class _HuaziCardState extends State<_HuaziCard> {
               Expanded(
                 child: Center(
                   child: Text(
-                    '落笔即心安',
+                    _t('落笔即心安'),
                     maxLines: 1,
                     overflow: TextOverflow.visible,
                     style: style,
@@ -461,7 +515,7 @@ class _HuaziCardState extends State<_HuaziCard> {
               Row(
                 children: [
                   Text(
-                    widget.preset.name,
+                    _t(widget.preset.name),
                     style: TextStyle(
                       fontFamily: 'NotoSansSC',
                       fontSize: 10.5,
@@ -471,7 +525,7 @@ class _HuaziCardState extends State<_HuaziCard> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      widget.preset.description,
+                      _t(widget.preset.description),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(

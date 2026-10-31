@@ -4,11 +4,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../core/i18n.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../state/app_state.dart';
 import 'splash.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。
+const Map<String, String> _en = <String, String>{
+  '此记已上锁': 'ThisNote is locked',
+  '输入 4 位密码，继续写字': 'Enter your 4-digit passcode to keep writing',
+  '密码只保存在本机，忘记后无法找回':
+      'The passcode stays on this device. It cannot be recovered.',
+  '清空': 'Clear',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
 
 class LockScreen extends StatefulWidget {
   const LockScreen({super.key});
@@ -99,17 +111,19 @@ class _LockScreenState extends State<LockScreen>
                     const Seal(size: 52, radius: 14),
                     const SizedBox(height: 22),
                     Text(
-                      '此记已上锁',
+                      _t('此记已上锁'),
                       style: TextStyle(
-                        fontFamily: 'WenKai',
-                        fontSize: 22,
-                        letterSpacing: 2,
+                        fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
+                        fontSize: I18n.isEn ? 19 : 22,
+                        fontWeight: I18n.isEn ? FontWeight.w600 : null,
+                        letterSpacing: I18n.isEn ? 0.4 : 2,
                         color: c.ink,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '输入 4 位密码，继续写字',
+                      _t('输入 4 位密码，继续写字'),
+                      textAlign: TextAlign.center,
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 12,
@@ -164,7 +178,8 @@ class _LockScreenState extends State<LockScreen>
                     ),
                     const SizedBox(height: 26),
                     Text(
-                      '密码只保存在本机，忘记后无法找回',
+                      _t('密码只保存在本机，忘记后无法找回'),
+                      textAlign: TextAlign.center,
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 10.5,
@@ -218,7 +233,7 @@ class _Keypad extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _Key(
-                label: '清空',
+                label: _t('清空'),
                 small: true,
                 onTap: onClear,
                 color: c.inkMuted,

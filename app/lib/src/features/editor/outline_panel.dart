@@ -1,9 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
 import '../../state/app_state.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。
+const Map<String, String> _en = <String, String>{
+  '这篇还没有标题。\n用标题 1–3 分段，这里就会长出一张地图。':
+      'This note has no headings yet.\nUse Heading 1–3 to grow a map here.',
+  '目录': 'Outline',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
 
 /// 长文写作者的「目录」：从正文的标题 1–3 实时生成，点一下跳过去。
 /// 桌面上是停靠在右侧的栏，手机上浮在纸面上。
@@ -28,7 +38,7 @@ class OutlinePanel extends StatelessWidget {
             ? Padding(
                 padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
                 child: Text(
-                  '这篇还没有标题。\n用标题 1–3 分段，这里就会长出一张地图。',
+                  _t('这篇还没有标题。\n用标题 1–3 分段，这里就会长出一张地图。'),
                   style: TextStyle(
                     fontFamily: 'NotoSansSC',
                     fontSize: 10.5,
@@ -109,7 +119,7 @@ class OutlinePanel extends StatelessWidget {
                     Icon(LucideIcons.listTree, size: 14, color: c.inkMuted),
                     const SizedBox(width: 6),
                     Text(
-                      '目录',
+                      _t('目录'),
                       style: TextStyle(
                         fontFamily: 'WenKai',
                         fontSize: 14,

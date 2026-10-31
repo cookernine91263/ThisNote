@@ -1,10 +1,11 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../core/format.dart';
+import '../core/i18n.dart';
 import '../core/icons.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
@@ -32,25 +33,28 @@ class EmptyDesk extends StatelessWidget {
           child: IgnorePointer(
             child: Column(
               children: [
-                for (final ch in '落笔即心安'.split(''))
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: Text(
-                      ch,
-                      style: TextStyle(
-                        fontFamily: 'WenKai',
-                        fontSize: 19,
-                        color: c.inkMuted.withValues(alpha: 0.32),
+                if (!I18n.isEn)
+                  for (final ch in '落笔即心安'.split(''))
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      child: Text(
+                        ch,
+                        style: TextStyle(
+                          fontFamily: 'WenKai',
+                          fontSize: 19,
+                          color: c.inkMuted.withValues(alpha: 0.32),
+                        ),
                       ),
                     ),
+                if (!I18n.isEn) ... [
+                  const SizedBox(height: 18),
+                  Container(
+                    width: 1,
+                    height: 30,
+                    color: c.line.withValues(alpha: 0.8),
                   ),
-                const SizedBox(height: 18),
-                Container(
-                  width: 1,
-                  height: 30,
-                  color: c.line.withValues(alpha: 0.8),
-                ),
-                const SizedBox(height: 14),
+                  const SizedBox(height: 14),
+                ],
                 const Seal(size: 24, radius: 7),
               ],
             ),
@@ -79,7 +83,7 @@ class EmptyDesk extends StatelessWidget {
                       Dot(size: 2.5, color: c.lineStrong),
                       const SizedBox(width: 10),
                       Text(
-                        '${greeting(now)}，适合写一点',
+                        _t('{g}，适合写一点', {'g': greeting(now)}),
                         style: TextStyle(
                           fontFamily: 'NotoSansSC',
                           fontSize: 11,
@@ -99,12 +103,12 @@ class EmptyDesk extends StatelessWidget {
                 Reveal(
                   delay: const Duration(milliseconds: 60),
                   child: Text(
-                    '今天，写点什么？',
+                    _t('今天，写点什么？'),
                     style: TextStyle(
-                      fontFamily: 'WenKai',
-                      fontSize: 43,
+                      fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
+                      fontSize: I18n.isEn ? 38 : 43,
                       height: 1.25,
-                      letterSpacing: 2,
+                      letterSpacing: I18n.isEn ? 0.5 : 2,
                       color: c.ink,
                     ),
                   ),
@@ -115,7 +119,7 @@ class EmptyDesk extends StatelessWidget {
                   child: SizedBox(
                     width: 460,
                     child: Text(
-                      '不必等到有灵感。先写下一句，纸会接住剩下的。',
+                      _t('不必等到有灵感。先写下一句，纸会接住剩下的。'),
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 13,
@@ -134,28 +138,28 @@ class EmptyDesk extends StatelessWidget {
                     children: [
                       _StartCard(
                         icon: LucideIcons.calendarHeart,
-                        title: '写日记',
-                        subtitle: '天气、心情与三件小事',
+                        title: _t('写日记'),
+                        subtitle: _t('天气、心情与三件小事'),
                         onTap: () => state.createNote(
                           kind: NoteKind.diary,
                         ),
                       ),
                       _StartCard(
                         icon: LucideIcons.penLine,
-                        title: '写随笔',
-                        subtitle: '想到哪里，写到哪里',
+                        title: _t('写随笔'),
+                        subtitle: _t('想到哪里，写到哪里'),
                         onTap: () => state.createNote(kind: NoteKind.note),
                       ),
                       _StartCard(
                         icon: LucideIcons.feather,
-                        title: '写作文',
-                        subtitle: '题目、结构与完整的表达',
+                        title: _t('写作文'),
+                        subtitle: _t('题目、结构与完整的表达'),
                         onTap: () => state.createNote(kind: NoteKind.essay),
                       ),
                       _StartCard(
                         icon: LucideIcons.sparkles,
-                        title: '看模板',
-                        subtitle: '换一种开始的方式',
+                        title: _t('看模板'),
+                        subtitle: _t('换一种开始的方式'),
                         onTap: () => showNewNoteSheet(context),
                       ),
                     ],
@@ -168,11 +172,11 @@ class EmptyDesk extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SectionLabel(
-                        '最近写过',
+                        _t('最近写过'),
                         trailing: GestureDetector(
                           onTap: () => state.setView('all'),
                           child: Text(
-                            '全部',
+                            _t('全部'),
                             style: TextStyle(
                               fontFamily: 'NotoSansSC',
                               fontSize: 10.5,
@@ -199,9 +203,9 @@ class EmptyDesk extends StatelessWidget {
                   child: Column(
                     children: [
                       Text(
-                        '“写作是把散落的自己，一页一页收回来。”',
+                        _t('“写作是把散落的自己，一页一页收回来。”'),
                         style: TextStyle(
-                          fontFamily: 'WenKai',
+                          fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
                           fontSize: 12.5,
                           color: c.inkMuted,
                           letterSpacing: 0.4,
@@ -209,7 +213,7 @@ class EmptyDesk extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Ctrl / ⌘ + K 打开命令面板',
+                        _t('Ctrl / ⌘ + K 打开命令面板'),
                         style: TextStyle(
                           fontFamily: 'NotoSansSC',
                           fontSize: 9.5,
@@ -329,7 +333,7 @@ class _RecentRow extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    note.title.trim().isEmpty ? '无题' : note.title.trim(),
+                    note.title.trim().isEmpty ? _t('无题') : note.title.trim(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -350,7 +354,7 @@ class _RecentRow extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  '${note.words} 字',
+                  I18n.count(note.words, '字', 'word'),
                   style: TextStyle(
                     fontFamily: 'NotoSansSC',
                     fontSize: 9.5,
@@ -390,7 +394,7 @@ class _GoalRing extends StatelessWidget {
     return Row(
       children: [
         Text(
-          streak > 0 ? '连续 $streak 天' : '从今天开始',
+          streak > 0 ? _t('连续 {n} 天', {'n': streak}) : _t('从今天开始'),
           style: TextStyle(
             fontFamily: 'NotoSansSC',
             fontSize: 10,
@@ -463,3 +467,30 @@ class _RingPainter extends CustomPainter {
   bool shouldRepaint(covariant _RingPainter old) =>
       old.progress != progress || old.accent != accent || old.track != track;
 }
+
+/// 英文文案。键是界面里的中文原文，值是对应的英文。
+const Map<String, String> _en = <String, String>{
+  '{g}，适合写一点': '{g} — a good time to write a little',
+  '今天，写点什么？': 'What will you write today?',
+  '不必等到有灵感。先写下一句，纸会接住剩下的。':
+      'No need to wait for inspiration. Write the first line and the page catches the rest.',
+  '写日记': 'Write a diary',
+  '天气、心情与三件小事': 'Weather, mood, 3 things',
+  '写随笔': 'Write a note',
+  '想到哪里，写到哪里': 'Follow the thought',
+  '写作文': 'Write an essay',
+  '题目、结构与完整的表达': 'Topic, structure, finish',
+  '看模板': 'Browse templates',
+  '换一种开始的方式': 'Start a different way',
+  '最近写过': 'Recently written',
+  '全部': 'All',
+  '“写作是把散落的自己，一页一页收回来。”':
+      '“Writing gathers the scattered self back, one page at a time.”',
+  'Ctrl / ⌘ + K 打开命令面板': 'Ctrl / Cmd + K opens the command palette',
+  '无题': 'Untitled',
+  '连续 {n} 天': '{n}-day streak',
+  '从今天开始': 'Start today',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
+

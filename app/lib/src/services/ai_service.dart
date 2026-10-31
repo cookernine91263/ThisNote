@@ -3,7 +3,23 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../core/i18n.dart';
 import '../data/models.dart';
+
+/// 错误提示与系统提示的语言补丁。
+const _en = <String, String>{
+  '还没有配置 API Key': 'No API key configured yet',
+  '接口地址为空': 'The API base URL is empty',
+  '接口地址格式不正确': 'The API base URL is not valid',
+  '请求超时，请检查网络或接口地址':
+      'The request timed out. Check your network or the API URL.',
+  '无法连接接口：{error}': 'Could not reach the API: {error}',
+  '接口返回 {status}：{body}': 'The API returned {status}: {body}',
+  '已取消': 'Cancelled',
+  '接口没有返回文字': 'The API returned no text',
+  '返回内容无法解析：{error}': 'Could not parse the response: {error}',
+  '请用自然、地道的英文回答。': 'Respond in natural, polished English.',
+};
 
 class AiException implements Exception {
   AiException(this.message);
@@ -31,15 +47,23 @@ class AiService {
 
   Uri _uri() {
     if (!settings.configured) {
-      throw AiException('还没有配置 API Key');
+      throw AiException(tr('还没有配置 API Key', null, _en));
     }
     final base = settings.baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
-    if (base.isEmpty) throw AiException('接口地址为空');
+    if (base.isEmpty) throw AiException(tr('接口地址为空', null, _en));
     final uri = Uri.tryParse(
       base.endsWith('/chat/completions') ? base : '$base/chat/completions',
     );
-    if (uri == null) throw AiException('接口地址格式不正确');
+    if (uri == null) throw AiException(tr('接口地址格式不正确', null, _en));
     return uri;
+  }
+
+  /// 英文界面时给系统提示补一句语言要求，让模型也用英文作答；
+  /// 中文界面的提示本身就是中文，原样发送。
+  String _system(String system) {
+    if (!I18n.isEn) return system;
+    final directive = tr('请用自然、地道的英文回答。', null, _en);
+    return system.trim().isEmpty ? directive : '$system\n\n$directive';
   }
 
   Map<String, dynamic> _body({
@@ -54,7 +78,7 @@ class AiService {
             ? 'deepseek-chat'
             : settings.model.trim(),
         'messages': [
-          {'role': 'system', 'content': system},
+          {'role': 'system', 'content': _system(system)},
           {'role': 'user', 'content': user},
         ],
         'temperature': temperature,
@@ -93,13 +117,16 @@ class AiService {
           )
           .timeout(const Duration(seconds: 75));
     } on TimeoutException {
-      throw AiException('请求超时，请检查网络或接口地址');
+      throw AiException(tr('请求超时，请检查网络或接口地址', null, _en));
     } catch (e) {
-      throw AiException('无法连接接口：$e');
+      throw AiException(tr('无法连接接口：{error}', {'error': e}, _en));
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw AiException(
-        '接口返回 ${response.statusCode}：${_brief(utf8.decode(response.bodyBytes, allowMalformed: true))}',
+        tr('接口返回 {status}：{body}', {
+          'status': response.statusCode,
+          'body': _brief(utf8.decode(response.bodyBytes, allowMalformed: true)),
+        }, _en),
       );
     }
     return _contentOf(utf8.decode(response.bodyBytes, allowMalformed: true));
@@ -138,7 +165,12 @@ class AiService {
           .timeout(const Duration(seconds: 60));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final body = await response.stream.bytesToString();
-        throw AiException('接口返回 ${response.statusCode}：${_brief(body)}');
+        throw AiException(
+          tr('接口返回 {status}：{body}', {
+            'status': response.statusCode,
+            'body': _brief(body),
+          }, _en),
+        );
       }
       final type = response.headers['content-type'] ?? '';
       if (type.contains('application/json')) {
@@ -170,15 +202,15 @@ class AiService {
           // 心跳或半截 JSON，跳过就好
         }
       }
-      if (_cancelled) throw AiException('已取消');
+      if (_cancelled) throw AiException(tr('已取消', null, _en));
       final text = buffer.toString().trim();
-      if (text.isEmpty) throw AiException('接口没有返回文字');
+      if (text.isEmpty) throw AiException(tr('接口没有返回文字', null, _en));
       return text;
     } on TimeoutException {
-      throw AiException('请求超时，请检查网络或接口地址');
+      throw AiException(tr('请求超时，请检查网络或接口地址', null, _en));
     } on http.ClientException catch (e) {
-      if (_cancelled) throw AiException('已取消');
-      throw AiException('无法连接接口：$e');
+      if (_cancelled) throw AiException(tr('已取消', null, _en));
+      throw AiException(tr('无法连接接口：{error}', {'error': e}, _en));
     } finally {
       _client = null;
       client.close();
@@ -190,12 +222,12 @@ class AiService {
       final data = jsonDecode(body);
       final content = data['choices'][0]['message']['content'];
       if (content is! String || content.trim().isEmpty) {
-        throw AiException('接口没有返回文字');
+        throw AiException(tr('接口没有返回文字', null, _en));
       }
       return content.trim();
     } catch (e) {
       if (e is AiException) rethrow;
-      throw AiException('返回内容无法解析：$e');
+      throw AiException(tr('返回内容无法解析：{error}', {'error': e}, _en));
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../core/format.dart';
+import '../core/i18n.dart';
 import '../core/icons.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
@@ -50,8 +51,8 @@ class _NoteListPanelState extends State<NoteListPanel> {
     if (!mounted) return;
     showToast(
       context,
-      '已移到回收站',
-      actionLabel: '撤销',
+      _t('已移到回收站'),
+      actionLabel: _t('撤销'),
       onAction: () => state.restoreNote(meta.id),
     );
   }
@@ -73,23 +74,27 @@ class _NoteListPanelState extends State<NoteListPanel> {
     final state = context.watch<AppState>();
     final c = AppPalette.of(context);
     final folderName = state.folderFilter == '__unfiled__'
-        ? '未分类'
+        ? _t('未分类')
         : state.folderById(state.folderFilter)?.name;
     final title = switch (state.view) {
-      'today' => '今日',
-      'all' => folderName ?? '全部笔记',
-      'tags' => state.tagFilter == null ? '标签' : '# ${state.tagFilter}',
-      'trash' => '回收站',
-      'search' => '搜索',
-      'calendar' => '日历',
-      _ => '笔记',
+      'today' => _t('今日'),
+      'all' => folderName ?? _t('全部笔记'),
+      'tags' => state.tagFilter == null ? _t('标签') : '# ${state.tagFilter}',
+      'trash' => _t('回收站'),
+      'search' => _t('搜索'),
+      'calendar' => _t('日历'),
+      _ => _t('笔记'),
     };
     final subtitle = switch (state.view) {
       'today' => dateLabel(DateTime.now()),
-      'tags' => state.tagFilter == null ? '按标签整理你的文字' : '与这个标签有关的文字',
-      'trash' => '删除的文字会在这里保留',
-      'search' => '搜索标题、正文与标签',
-      'all' => state.folderFilter == null ? '所有写下的日子' : '文件夹里的文字',
+      'tags' => state.tagFilter == null
+          ? _t('按标签整理你的文字')
+          : _t('与这个标签有关的文字'),
+      'trash' => _t('删除的文字会在这里保留'),
+      'search' => _t('搜索标题、正文与标签'),
+      'all' => state.folderFilter == null
+          ? _t('所有写下的日子')
+          : _t('文件夹里的文字'),
       _ => '',
     };
     final notes = state.visibleNotes;
@@ -117,9 +122,10 @@ class _NoteListPanelState extends State<NoteListPanel> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  fontFamily: state.view == 'today'
-                                      ? 'WenKai'
-                                      : 'NotoSansSC',
+                                  fontFamily:
+                                      state.view == 'today' && !I18n.isEn
+                                          ? 'WenKai'
+                                          : 'NotoSansSC',
                                   fontSize: state.view == 'today' ? 24 : 20,
                                   fontWeight: FontWeight.w600,
                                   letterSpacing: state.view == 'today'
@@ -163,13 +169,13 @@ class _NoteListPanelState extends State<NoteListPanel> {
                   if (state.view == 'today')
                     SoftIconButton(
                       icon: LucideIcons.library,
-                      tooltip: '全部笔记',
+                      tooltip: _t('全部笔记'),
                       size: 30,
                       onPressed: () => state.setView('all'),
                     ),
                   SoftIconButton(
                     icon: _searching ? LucideIcons.x : LucideIcons.search,
-                    tooltip: '搜索',
+                    tooltip: _t('搜索'),
                     size: 30,
                     active: _searching,
                     onPressed: _toggleSearch,
@@ -177,7 +183,7 @@ class _NoteListPanelState extends State<NoteListPanel> {
                   const SizedBox(width: 2),
                   SoftIconButton(
                     icon: LucideIcons.plus,
-                    tooltip: '新建（Ctrl N）',
+                    tooltip: _t('新建（Ctrl N）'),
                     size: 30,
                     onPressed: () => showNewNoteSheet(context),
                   ),
@@ -217,7 +223,7 @@ class _NoteListPanelState extends State<NoteListPanel> {
                                     color: c.ink,
                                   ),
                                   decoration: InputDecoration(
-                                    hintText: '搜索所有文字…',
+                                    hintText: _t('搜索所有文字…'),
                                     hintStyle: TextStyle(
                                       fontFamily: 'NotoSansSC',
                                       fontSize: 12.5,
@@ -244,7 +250,7 @@ class _NoteListPanelState extends State<NoteListPanel> {
               runSpacing: 6,
               children: [
                 TagChip(
-                  label: '全部',
+                  label: _t('全部'),
                   selected: state.tagFilter == null,
                   onTap: () => state.setView('tags'),
                 ),
@@ -263,12 +269,12 @@ class _NoteListPanelState extends State<NoteListPanel> {
             padding: const EdgeInsets.fromLTRB(18, 0, 12, 8),
             child: Row(
               children: [
-                for (final s in const [
-                  ('updated', '最近'),
-                  ('created', '创建'),
-                  ('title', '标题'),
-                  ('words', '字数'),
-                  ('manual', '手动'),
+                for (final s in [
+                  ('updated', _t('最近')),
+                  ('created', _t('创建')),
+                  ('title', _t('标题')),
+                  ('words', _t('字数')),
+                  ('manual', _t('手动')),
                 ])
                   Padding(
                     padding: const EdgeInsets.only(right: 2),
@@ -396,7 +402,11 @@ class _NoteListPanelState extends State<NoteListPanel> {
           child: Row(
             children: [
               Text(
-                '${state.notes.where((e) => !e.isTrashed).length} 篇',
+                I18n.count(
+                  state.notes.where((e) => !e.isTrashed).length,
+                  '篇',
+                  'note',
+                ),
                 style: TextStyle(
                   fontFamily: 'NotoSansSC',
                   fontSize: 10,
@@ -407,7 +417,7 @@ class _NoteListPanelState extends State<NoteListPanel> {
               Dot(color: c.lineStrong),
               const SizedBox(width: 8),
               Text(
-                '${state.totalWords} 字',
+                I18n.count(state.totalWords, '字', 'word'),
                 style: TextStyle(
                   fontFamily: 'NotoSansSC',
                   fontSize: 10,
@@ -418,7 +428,7 @@ class _NoteListPanelState extends State<NoteListPanel> {
               GestureDetector(
                 onTap: () => state.setView('stats'),
                 child: Text(
-                  '看看坚持',
+                  _t('看看坚持'),
                   style: TextStyle(
                     fontFamily: 'NotoSansSC',
                     fontSize: 10,
@@ -446,11 +456,11 @@ class _NoteListPanelState extends State<NoteListPanel> {
   Widget _empty(BuildContext context, AppState state) {
     final c = AppPalette.of(context);
     final text = switch (state.view) {
-      'trash' => '回收站是空的',
-      'search' => '没有找到相关的文字',
-      'today' => '今天还是一张白纸',
-      'tags' => state.tagFilter == null ? '还没有标签' : '这个标签下还没有文字',
-      _ => '还没有笔记',
+      'trash' => _t('回收站是空的'),
+      'search' => _t('没有找到相关的文字'),
+      'today' => _t('今天还是一张白纸'),
+      'tags' => state.tagFilter == null ? _t('还没有标签') : _t('这个标签下还没有文字'),
+      _ => _t('还没有笔记'),
     };
     return Center(
       child: Padding(
@@ -473,7 +483,7 @@ class _NoteListPanelState extends State<NoteListPanel> {
             if (state.view != 'trash' && state.view != 'search') ...[
               const SizedBox(height: 16),
               SoftButton(
-                label: '写一页',
+                label: _t('写一页'),
                 icon: LucideIcons.penLine,
                 dense: true,
                 onPressed: () => showNewNoteSheet(context),
@@ -498,12 +508,15 @@ class _NoteListPanelState extends State<NoteListPanel> {
     for (final n in notes) {
       final key = n.day;
       final label = key == today
-          ? '今天'
+          ? _t('今天')
           : key == yest
-          ? '昨天'
+          ? _t('昨天')
           : (DateTime.now().difference(parseDay(key)).inDays < 7)
-          ? '本周'
-          : '${parseDay(key).year} 年 ${parseDay(key).month} 月';
+          ? _t('本周')
+          : _t('{y} 年 {m} 月', {
+              'y': parseDay(key).year,
+              'm': parseDay(key).month,
+            });
       if (label != current) {
         current = label;
         result.add(_GroupHeader(label));
@@ -542,7 +555,7 @@ class _NoteGhost extends StatelessWidget {
           const SizedBox(width: 7),
           Expanded(
             child: Text(
-              meta.title.trim().isEmpty ? '无题' : meta.title.trim(),
+              meta.title.trim().isEmpty ? _t('无题') : meta.title.trim(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -688,7 +701,7 @@ class _NoteCardState extends State<NoteCard> {
                       Expanded(
                         child: Text(
                           meta.title.trim().isEmpty
-                              ? '无题'
+                              ? _t('无题')
                               : meta.title.trim(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -724,7 +737,7 @@ class _NoteCardState extends State<NoteCard> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    meta.excerpt.isEmpty ? '还没有写下正文' : meta.excerpt,
+                    meta.excerpt.isEmpty ? _t('还没有写下正文') : meta.excerpt,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -755,7 +768,7 @@ class _NoteCardState extends State<NoteCard> {
                       Dot(size: 2, color: c.lineStrong),
                       const SizedBox(width: 7),
                       Text(
-                        '${meta.words} 字',
+                        I18n.count(meta.words, '字', 'word'),
                         style: TextStyle(
                           fontFamily: 'NotoSansSC',
                           fontSize: 9.5,
@@ -824,7 +837,11 @@ class _NoteCardState extends State<NoteCard> {
         final id = details.data.substring(5);
         final ok = await state.reorderNote(id, meta.id, after: after);
         if (!ok && context.mounted) {
-          showToast(context, '只能在同一天里调整顺序', icon: LucideIcons.alertCircle);
+          showToast(
+            context,
+            _t('只能在同一天里调整顺序'),
+            icon: LucideIcons.alertCircle,
+          );
         }
       },
       builder: (context, candidate, rejected) => LongPressDraggable<String>(
@@ -865,15 +882,21 @@ class _NoteCardState extends State<NoteCard> {
       ),
       color: c.surface,
       items: [
-        PopupMenuItem(value: 'pin', child: Text(meta.pinned ? '取消置顶' : '置顶')),
-        PopupMenuItem(value: 'fav', child: Text(meta.favorite ? '取消收藏' : '收藏')),
+        PopupMenuItem(
+          value: 'pin',
+          child: Text(_t(meta.pinned ? '取消置顶' : '置顶')),
+        ),
+        PopupMenuItem(
+          value: 'fav',
+          child: Text(_t(meta.favorite ? '取消收藏' : '收藏')),
+        ),
         if (widget.view != 'trash') ...[
-          const PopupMenuItem(value: 'duplicate', child: Text('复制一份')),
-          const PopupMenuItem(value: 'export', child: Text('导出…')),
-          const PopupMenuItem(value: 'trash', child: Text('移到回收站')),
+          PopupMenuItem(value: 'duplicate', child: Text(_t('复制一份'))),
+          PopupMenuItem(value: 'export', child: Text(_t('导出…'))),
+          PopupMenuItem(value: 'trash', child: Text(_t('移到回收站'))),
         ] else ...[
-          const PopupMenuItem(value: 'restore', child: Text('恢复')),
-          const PopupMenuItem(value: 'purge', child: Text('永久删除')),
+          PopupMenuItem(value: 'restore', child: Text(_t('恢复'))),
+          PopupMenuItem(value: 'purge', child: Text(_t('永久删除'))),
         ],
       ],
     ).then((value) async {
@@ -891,16 +914,20 @@ class _NoteCardState extends State<NoteCard> {
         case 'restore':
           await state.restoreNote(meta.id);
           if (context.mounted) {
-            showToast(context, '已恢复到原来的位置', icon: LucideIcons.recycle);
+            showToast(
+              context,
+              _t('已恢复到原来的位置'),
+              icon: LucideIcons.recycle,
+            );
           }
           break;
         case 'purge':
           if (await showConfirm(
             context,
-            title: '永久删除？',
-            message: '这篇文字将无法恢复。',
+            title: _t('永久删除？'),
+            message: _t('这篇文字将无法恢复。'),
             danger: true,
-            confirmLabel: '删除',
+            confirmLabel: _t('删除'),
           )) {
             await state.purgeNote(meta.id);
           }
@@ -908,11 +935,11 @@ class _NoteCardState extends State<NoteCard> {
         case 'duplicate':
           final copy = await state.duplicateNote(meta.id);
           if (copy != null && context.mounted) {
-            showToast(context, '已复制一份', icon: LucideIcons.copy);
+            showToast(context, _t('已复制一份'), icon: LucideIcons.copy);
           }
           break;
         case 'export':
-          showToast(context, '在编辑器右上角的菜单里可以导出这篇文字');
+          showToast(context, _t('在编辑器右上角的菜单里可以导出这篇文字'));
           break;
       }
     });
@@ -937,16 +964,16 @@ class _NoteCardState extends State<NoteCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  meta.title.isEmpty ? '无题' : meta.title,
+                  meta.title.isEmpty ? _t('无题') : meta.title,
                   style: TextStyle(
-                    fontFamily: 'WenKai',
+                    fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
                     fontSize: 22,
                     color: c.ink,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${shortDate(meta.createdAt)} · ${meta.words} 字',
+                  '${shortDate(meta.createdAt)} · ${I18n.count(meta.words, '字', 'word')}',
                   style: TextStyle(
                     fontFamily: 'NotoSansSC',
                     fontSize: 10.5,
@@ -957,7 +984,7 @@ class _NoteCardState extends State<NoteCard> {
                 Flexible(
                   child: SingleChildScrollView(
                     child: Text(
-                      meta.text.isEmpty ? '（空）' : meta.text,
+                      meta.text.isEmpty ? _t('（空）') : meta.text,
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 14,
@@ -975,16 +1002,16 @@ class _NoteCardState extends State<NoteCard> {
                       onPressed: () async {
                         if (await showConfirm(
                           context,
-                          title: '永久删除？',
-                          message: '这篇文字将无法恢复。',
+                          title: _t('永久删除？'),
+                          message: _t('这篇文字将无法恢复。'),
                           danger: true,
-                          confirmLabel: '删除',
+                          confirmLabel: _t('删除'),
                         )) {
                           await state.purgeNote(meta.id);
                           if (context.mounted) Navigator.of(context).pop();
                         }
                       },
-                      child: Text('永久删除', style: TextStyle(color: c.danger)),
+                      child: Text(_t('永久删除'), style: TextStyle(color: c.danger)),
                     ),
                     const SizedBox(width: 6),
                     FilledButton.icon(
@@ -1000,14 +1027,14 @@ class _NoteCardState extends State<NoteCard> {
                         if (context.mounted) {
                           showToast(
                             context,
-                            '已恢复',
+                            _t('已恢复'),
                             icon: LucideIcons.recycle,
                           );
                           Navigator.of(context).pop();
                         }
                       },
                       icon: const Icon(LucideIcons.recycle, size: 14),
-                      label: const Text('恢复'),
+                      label: Text(_t('恢复')),
                     ),
                   ],
                 ),
@@ -1047,3 +1074,76 @@ class _DropLine extends StatelessWidget {
     );
   }
 }
+
+/// 英文文案。键是界面里的中文原文，值是对应的英文。
+const Map<String, String> _en = <String, String>{
+  // 顶部标题与说明
+  '今日': 'Today',
+  '全部笔记': 'All notes',
+  '标签': 'Tags',
+  '回收站': 'Trash',
+  '搜索': 'Search',
+  '日历': 'Calendar',
+  '笔记': 'Notes',
+  '未分类': 'Unfiled',
+  '按标签整理你的文字': 'Organize your words by tag',
+  '与这个标签有关的文字': 'Words with this tag',
+  '删除的文字会在这里保留': 'Deleted words stay here',
+  '搜索标题、正文与标签': 'Search titles, text and tags',
+  '所有写下的日子': 'Every day you wrote down',
+  '文件夹里的文字': 'Words in this folder',
+  // 工具栏
+  '新建（Ctrl N）': 'New (Ctrl N)',
+  '搜索所有文字…': 'Search all words…',
+  '全部': 'All',
+  // 排序
+  '最近': 'Recent',
+  '创建': 'Created',
+  '标题': 'Title',
+  '字数': 'Words',
+  '手动': 'Manual',
+  // 底部统计
+  '看看坚持': 'See streak',
+  // 空列表
+  '回收站是空的': 'Trash is empty',
+  '没有找到相关的文字': 'No matching words found',
+  '今天还是一张白纸': 'Today is still a blank page',
+  '还没有标签': 'No tags yet',
+  '这个标签下还没有文字': 'Nothing under this tag yet',
+  '还没有笔记': 'No notes yet',
+  '写一页': 'Write a page',
+  // 日期分组
+  '今天': 'Today',
+  '昨天': 'Yesterday',
+  '本周': 'This week',
+  '{y} 年 {m} 月': '{m}/{y}',
+  // 卡片
+  '无题': 'Untitled',
+  '还没有写下正文': 'No text yet',
+  '只能在同一天里调整顺序':
+      'You can only reorder notes within the same day',
+  // 右键菜单
+  '取消置顶': 'Unpin',
+  '置顶': 'Pin',
+  '取消收藏': 'Unfavorite',
+  '收藏': 'Favorite',
+  '复制一份': 'Duplicate',
+  '导出…': 'Export…',
+  '移到回收站': 'Move to Trash',
+  '恢复': 'Restore',
+  '永久删除': 'Delete forever',
+  '已恢复到原来的位置': 'Restored to its original place',
+  '永久删除？': 'Delete forever?',
+  '这篇文字将无法恢复。': 'This text cannot be recovered.',
+  '删除': 'Delete',
+  '已复制一份': 'Duplicated',
+  '在编辑器右上角的菜单里可以导出这篇文字':
+      'Export this note from the menu at the top right of the editor',
+  // 回收站预览
+  '（空）': '(empty)',
+  '已恢复': 'Restored',
+  '已移到回收站': 'Moved to Trash',
+  '撤销': 'Undo',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);

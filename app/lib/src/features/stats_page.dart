@@ -1,15 +1,75 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../core/format.dart';
+import '../core/i18n.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../data/models.dart';
 import '../state/app_state.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。
+const Map<String, String> _en = <String, String>{
+  '写作统计': 'Writing stats',
+  '不催促，只记录你走过的路': 'No rush — it just keeps the path you walked',
+  '总字数': 'Total words',
+  '所有没有被丢掉的字': 'Every word you kept',
+  '总篇数': 'Total notes',
+  '日记 {d} · 作文 {e} · 随笔 {n}': 'Diary: {d} · Essay: {e} · Note: {n}',
+  '连续写作': 'Writing streak',
+  '天': 'day',
+  '保持住，哪怕只写一句': 'Keep it going, even one line',
+  '今天写下第一句吧': 'Write the first line today',
+  '今日进度': "Today's progress",
+  '今天的字数已经够了': "Today's word count is already there",
+  '还差 {n} 字': 'Still {n} to go',
+  '最近 7 天': 'Last 7 days',
+  '本周 {w} 字': 'This week · {w}',
+  '写作热力图': 'Writing heat',
+  '最近一年': 'Past year',
+  '少': 'Less',
+  '多': 'More',
+  '写了什么': 'What you wrote',
+  '还没有内容。': 'Nothing here yet.',
+  '无题': 'Untitled',
+  '日记': 'Diary',
+  '作文': 'Essay',
+  '随笔': 'Note',
+  '平均每篇 {avg} 字': 'Average per note · {avg}',
+  '常用的标签': 'Top tags',
+  '给文字贴上第一个标签吧。': 'Give your writing its first tag.',
+  '{date}还没有文字': '{date} has no words yet',
+  '{n} 篇 · {w} 字': '{n} · {w}',
+  '{words} 字 · {kind}': '{words} · {kind}',
+  '{date} · {words} 字': '{date} · {words}',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
+
+/// 数量在英文里要跟着单复数变，中文则把量词留在原文里：
+/// 中文只返回数字，英文返回「3 notes」这样的整体，所以 [_en] 里
+/// 写成 `'本周 {w} 字': 'This week · {w}'` 就够了。
+String _q(int n, String zhUnit, String enOne, [String? enMany]) =>
+    I18n.isEn ? I18n.count(n, zhUnit, enOne, enMany) : '$n';
+
+/// 月日：中文「10 月 31 日」，英文「Oct 31」。
+String _monthDay(DateTime d) =>
+    I18n.isEn ? DateFormat('MMM d').format(d) : '${d.month} 月 ${d.day} 日';
+
+/// 星期缩写（周一开头）。
+List<String> get _weekdayLetters => I18n.isEn
+    ? const ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+    : const ['一', '二', '三', '四', '五', '六', '日'];
+
+/// 热力图左侧只标周一、三、五、日。
+List<String> get _heatmapRows => I18n.isEn
+    ? const ['M', '', 'W', '', 'F', '', 'S']
+    : const ['一', '', '三', '', '五', '', '日'];
 
 class StatsPage extends StatelessWidget {
   const StatsPage({super.key});
@@ -35,17 +95,18 @@ class StatsPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '写作统计',
+                  _t('写作统计'),
                   style: TextStyle(
-                    fontFamily: 'WenKai',
-                    fontSize: 30,
-                    letterSpacing: 2,
+                    fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
+                    fontSize: I18n.isEn ? 26 : 30,
+                    fontWeight: I18n.isEn ? FontWeight.w600 : null,
+                    letterSpacing: I18n.isEn ? 0.3 : 2,
                     color: c.ink,
                   ),
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  '不催促，只记录你走过的路',
+                  _t('不催促，只记录你走过的路'),
                   style: TextStyle(
                     fontFamily: 'NotoSansSC',
                     fontSize: 10.5,
@@ -74,32 +135,49 @@ class StatsPage extends StatelessWidget {
           children: [
             _Metric(
               icon: LucideIcons.penLine,
-              label: '总字数',
+              label: _t('总字数'),
               value: '${state.totalWords}',
-              hint: '所有没有被丢掉的字',
+              hint: _t('所有没有被丢掉的字'),
             ),
             _Metric(
               icon: LucideIcons.library,
-              label: '总篇数',
+              label: _t('总篇数'),
               value: '${state.activeNotes.length}',
-              hint: '日记 ${state.diaryCount} · 作文 ${state.essayCount} · 随笔 ${state.noteCount}',
+              hint: _t('日记 {d} · 作文 {e} · 随笔 {n}', {
+                'd': state.diaryCount,
+                'e': state.essayCount,
+                'n': state.noteCount,
+              }),
               onTap: () => state.setView('all'),
             ),
             _Metric(
               icon: LucideIcons.flame,
-              label: '连续写作',
+              label: _t('连续写作'),
               value: '${state.streak}',
-              suffix: ' 天',
-              hint: state.streak > 0 ? '保持住，哪怕只写一句' : '今天写下第一句吧',
+              suffix: I18n.isEn
+                  ? ' ${I18n.plural(state.streak, _t('天'))}'
+                  : ' 天',
+              hint: state.streak > 0
+                  ? _t('保持住，哪怕只写一句')
+                  : _t('今天写下第一句吧'),
             ),
             _Metric(
               icon: LucideIcons.target,
-              label: '今日进度',
+              label: _t('今日进度'),
               value: '${state.todayWords}',
               suffix: ' / ${state.settings.dailyGoal}',
               hint: state.todayWords >= state.settings.dailyGoal
-                  ? '今天的字数已经够了'
-                  : '还差 ${math.max(0, state.settings.dailyGoal - state.todayWords)} 字',
+                  ? _t('今天的字数已经够了')
+                  : _t('还差 {n} 字', {
+                      'n': _q(
+                        math.max(
+                          0,
+                          state.settings.dailyGoal - state.todayWords,
+                        ),
+                        '字',
+                        'word',
+                      ),
+                    }),
             ),
           ],
           ),
@@ -114,9 +192,9 @@ class StatsPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SectionLabel(
-                '最近 7 天',
+                _t('最近 7 天'),
                 trailing: Text(
-                  '本周 $weekWords 字',
+                  _t('本周 {w} 字', {'w': _q(weekWords, '字', 'word')}),
                   style: TextStyle(
                     fontFamily: 'NotoSansSC',
                     fontSize: 10,
@@ -155,9 +233,9 @@ class StatsPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SectionLabel(
-                '写作热力图',
+                _t('写作热力图'),
                 trailing: Text(
-                  '最近一年',
+                  _t('最近一年'),
                   style: TextStyle(
                     fontFamily: 'NotoSansSC',
                     fontSize: 10,
@@ -174,7 +252,7 @@ class StatsPage extends StatelessWidget {
                 children: [
                   const Spacer(),
                   Text(
-                    '少',
+                    _t('少'),
                     style: TextStyle(
                       fontFamily: 'NotoSansSC',
                       fontSize: 9,
@@ -198,7 +276,7 @@ class StatsPage extends StatelessWidget {
                     ),
                   const SizedBox(width: 3),
                   Text(
-                    '多',
+                    _t('多'),
                     style: TextStyle(
                       fontFamily: 'NotoSansSC',
                       fontSize: 9,
@@ -224,10 +302,10 @@ class StatsPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SectionLabel('写了什么'),
+                    SectionLabel(_t('写了什么')),
                     if (total == 0)
                       Text(
-                        '还没有内容。',
+                        _t('还没有内容。'),
                         style: TextStyle(
                           fontFamily: 'NotoSansSC',
                           fontSize: 11,
@@ -261,12 +339,26 @@ class StatsPage extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      _Legend(color: c.accent, label: '日记', count: state.diaryCount),
-                      _Legend(color: c.gold, label: '作文', count: state.essayCount),
-                      _Legend(color: c.sage, label: '随笔', count: state.noteCount),
+                      _Legend(
+                        color: c.accent,
+                        label: _t('日记'),
+                        count: state.diaryCount,
+                      ),
+                      _Legend(
+                        color: c.gold,
+                        label: _t('作文'),
+                        count: state.essayCount,
+                      ),
+                      _Legend(
+                        color: c.sage,
+                        label: _t('随笔'),
+                        count: state.noteCount,
+                      ),
                       const SizedBox(height: 4),
                       Text(
-                        '平均每篇 $avg 字',
+                        _t('平均每篇 {avg} 字', {
+                          'avg': _q(avg, '字', 'word'),
+                        }),
                         style: TextStyle(
                           fontFamily: 'NotoSansSC',
                           fontSize: 9.5,
@@ -286,10 +378,10 @@ class StatsPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SectionLabel('常用的标签'),
+                    SectionLabel(_t('常用的标签')),
                     if (state.tagCounts.isEmpty)
                       Text(
-                        '给文字贴上第一个标签吧。',
+                        _t('给文字贴上第一个标签吧。'),
                         style: TextStyle(
                           fontFamily: 'NotoSansSC',
                           fontSize: 11,
@@ -349,7 +441,10 @@ class StatsPage extends StatelessWidget {
         .toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     if (notes.isEmpty) {
-      showToast(context, '${day.month} 月 ${day.day} 日还没有文字');
+      showToast(
+        context,
+        _t('{date}还没有文字', {'date': _monthDay(day)}),
+      );
       return;
     }
     var total = 0;
@@ -377,16 +472,20 @@ class StatsPage extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      '${day.month} 月 ${day.day} 日',
+                      _monthDay(day),
                       style: TextStyle(
-                        fontFamily: 'WenKai',
+                        fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
                         fontSize: 24,
+                        fontWeight: I18n.isEn ? FontWeight.w600 : null,
                         color: c.ink,
                       ),
                     ),
                     const Spacer(),
                     Text(
-                      '${notes.length} 篇 · $total 字',
+                      _t('{n} 篇 · {w} 字', {
+                        'n': _q(notes.length, '篇', 'note'),
+                        'w': _q(total, '字', 'word'),
+                      }),
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 10,
@@ -459,7 +558,7 @@ class _DayNoteRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        note.title.trim().isEmpty ? '无题' : note.title.trim(),
+                        note.title.trim().isEmpty ? _t('无题') : note.title.trim(),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -470,7 +569,10 @@ class _DayNoteRow extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '${note.words} 字 · ${note.kind.label}',
+                        _t('{words} 字 · {kind}', {
+                          'words': _q(note.words, '字', 'word'),
+                          'kind': note.kind.label,
+                        }),
                         style: TextStyle(
                           fontFamily: 'NotoSansSC',
                           fontSize: 8.5,
@@ -609,11 +711,13 @@ class _Bar extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     final ratio = (stat.words / maxWords).clamp(0.0, 1.0);
-    const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
     return GestureDetector(
       onTap: onTap,
       child: Tooltip(
-      message: '${stat.date.month}月${stat.date.day}日 · ${stat.words} 字',
+      message: _t('{date} · {words} 字', {
+        'date': _monthDay(stat.date),
+        'words': _q(stat.words, '字', 'word'),
+      }),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
@@ -643,7 +747,7 @@ class _Bar extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            weekdays[stat.date.weekday - 1],
+            _weekdayLetters[stat.date.weekday - 1],
             style: TextStyle(
               fontFamily: 'NotoSansSC',
               fontSize: 8.5,
@@ -690,7 +794,7 @@ class _Heatmap extends StatelessWidget {
                       height: 14,
                       width: 10,
                       child: Text(
-                        i.isEven ? ['一', '', '三', '', '五', '', '日'][i] : '',
+                        i.isEven ? _heatmapRows[i] : '',
                         style: TextStyle(
                           fontFamily: 'NotoSansSC',
                           fontSize: 7.5,
@@ -711,8 +815,14 @@ class _Heatmap extends StatelessWidget {
                         children: [
                           for (final day in week)
                             Tooltip(
-                              message:
-                                  '${day.month}月${day.day}日 · ${data[dayKey(day)] ?? 0} 字',
+                              message: _t('{date} · {words} 字', {
+                                'date': _monthDay(day),
+                                'words': _q(
+                                  data[dayKey(day)] ?? 0,
+                                  '字',
+                                  'word',
+                                ),
+                              }),
                               waitDuration: const Duration(milliseconds: 250),
                               child: GestureDetector(
                                 onTap: day.isAfter(today)

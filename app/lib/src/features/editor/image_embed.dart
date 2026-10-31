@@ -7,9 +7,27 @@ import 'package:flutter_quill/quill_delta.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:path/path.dart' as p;
 
+import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
 import '../../data/repository.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。
+const Map<String, String> _en = <String, String>{
+  '图片已不在此设备上': 'Image is no longer on this device',
+  '图片': 'Image',
+  '看大图': 'View larger',
+  '宽度': 'Width',
+  '对齐': 'Align',
+  '左': 'Left',
+  '居中': 'Center',
+  '右': 'Right',
+  '替换…': 'Replace…',
+  '删除': 'Delete',
+  '完成': 'Done',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
 
 /// 图片的宽度与对齐保存在 embed 自身的属性上，不改动正文，
 /// 也不影响旧版只有路径的图片。
@@ -113,7 +131,7 @@ class NoteImageEmbedBuilder extends EmbedBuilder {
       ),
       alignment: Alignment.center,
       child: Text(
-        '图片已不在此设备上',
+        _t('图片已不在此设备上'),
         style: TextStyle(
           fontFamily: 'NotoSansSC',
           fontSize: 10,
@@ -200,10 +218,10 @@ class _ImageControlsState extends State<_ImageControls> {
 
   Future<void> _replace() async {
     final picked = await openFile(
-      acceptedTypeGroups: const [
+      acceptedTypeGroups: [
         XTypeGroup(
-          label: '图片',
-          extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'],
+          label: _t('图片'),
+          extensions: const ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'],
         ),
       ],
     );
@@ -278,7 +296,7 @@ class _ImageControlsState extends State<_ImageControls> {
               Row(
                 children: [
                   Text(
-                    '图片',
+                    _t('图片'),
                     style: TextStyle(
                       fontFamily: 'WenKai',
                       fontSize: 20,
@@ -289,9 +307,9 @@ class _ImageControlsState extends State<_ImageControls> {
                   const Spacer(),
                   TextButton(
                     onPressed: _preview,
-                    child: const Text(
-                      '看大图',
-                      style: TextStyle(
+                    child: Text(
+                      _t('看大图'),
+                      style: const TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 11,
                       ),
@@ -313,7 +331,7 @@ class _ImageControlsState extends State<_ImageControls> {
                     height: 200,
                     fit: BoxFit.contain,
                     errorBuilder: (context, error, stack) => Text(
-                      '图片已不在此设备上',
+                      _t('图片已不在此设备上'),
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 11,
@@ -324,7 +342,7 @@ class _ImageControlsState extends State<_ImageControls> {
                 ),
               ),
               const SizedBox(height: 14),
-              _Label('宽度'),
+              _Label(_t('宽度')),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
@@ -338,7 +356,7 @@ class _ImageControlsState extends State<_ImageControls> {
                 ],
               ),
               const SizedBox(height: 12),
-              _Label('对齐'),
+              _Label(_t('对齐')),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
@@ -349,7 +367,7 @@ class _ImageControlsState extends State<_ImageControls> {
                     ('right', '右', LucideIcons.alignRight),
                   ])
                     _Choice(
-                      label: option.$2,
+                      label: _t(option.$2),
                       icon: option.$3,
                       selected: _align == option.$1,
                       onTap: () => _setAlign(option.$1),
@@ -362,16 +380,19 @@ class _ImageControlsState extends State<_ImageControls> {
                   TextButton.icon(
                     onPressed: _replace,
                     icon: const Icon(LucideIcons.imagePlus, size: 14),
-                    label: const Text(
-                      '替换…',
-                      style: TextStyle(fontFamily: 'NotoSansSC', fontSize: 11),
+                    label: Text(
+                      _t('替换…'),
+                      style: const TextStyle(
+                        fontFamily: 'NotoSansSC',
+                        fontSize: 11,
+                      ),
                     ),
                   ),
                   TextButton.icon(
                     onPressed: _delete,
                     icon: Icon(LucideIcons.trash2, size: 14, color: c.danger),
                     label: Text(
-                      '删除',
+                      _t('删除'),
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 11,
@@ -389,7 +410,7 @@ class _ImageControlsState extends State<_ImageControls> {
                       ),
                     ),
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('完成'),
+                    child: Text(_t('完成')),
                   ),
                 ],
               ),

@@ -4,6 +4,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../core/i18n.dart';
 import '../core/icons.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
@@ -13,6 +14,76 @@ import '../data/models.dart';
 import '../state/app_state.dart';
 import 'export_sheet.dart';
 
+/// 文案以中文为源，英文放在 [_en] 里。
+const Map<String, String> _en = <String, String>{
+  '命令面板': 'Command palette',
+  '此记 · 命令面板': 'ThisNote · Command palette',
+  '搜索命令、页面或动作…': 'Search commands, pages or actions…',
+  '没有匹配的命令': 'No matching command',
+  '选择': 'Select',
+  '打开': 'Open',
+  '关闭': 'Close',
+  '无题': 'Untitled',
+  '打开：{title}': 'Open: {title}',
+  '{n} 字': '{n}',
+  '笔记': 'Notes',
+  '新建': 'New',
+  '前往': 'Go to',
+  '编辑': 'Edit',
+  '操作': 'Actions',
+  '格式': 'Format',
+  '新建日记': 'New diary',
+  '新建随笔': 'New note',
+  '新建作文': 'New essay',
+  '前往今日': 'Go to today',
+  '全部笔记': 'All notes',
+  '日历': 'Calendar',
+  '标签': 'Tags',
+  '写作统计': 'Writing stats',
+  '设置': 'Settings',
+  '查找': 'Find',
+  '目录': 'Outline',
+  '整理排版': 'Tidy formatting',
+  '导出当前笔记…': 'Export current note…',
+  '加粗': 'Bold',
+  '倾斜': 'Italic',
+  '下划线': 'Underline',
+  '标题 1': 'Heading 1',
+  '标题 2': 'Heading 2',
+  '无序列表': 'Bullet list',
+  '有序列表': 'Numbered list',
+  '引用': 'Quote',
+  '外观：浅色': 'Appearance: Light',
+  '外观：深色': 'Appearance: Dark',
+  '外观：跟随系统': 'Appearance: System',
+  '立即锁定': 'Lock now',
+  '天气 · 心情 · 三件小事': 'Weather · Mood · Three small things',
+  '一张空白纸': 'A blank sheet',
+  '题目 · 开头 · 正文 · 结尾': 'Title · Opening · Body · Ending',
+  '今天写下的文字': 'What you wrote today',
+  '所有写下的日子': 'All the days you wrote',
+  '按日期回看': 'Look back by date',
+  '按主题整理': 'Organize by topic',
+  '连续天数与热力图': 'Streak and heatmap',
+  '外观 · 编辑器 · 数据': 'Appearance · Editor · Data',
+  '当前笔记内查找与替换': 'Find and replace in this note',
+  '按标题 1–3 生成大纲': 'Build an outline from headings 1–3',
+  '中英空格 · 半角标点 · 省略号': 'CJK spacing · Half-width marks · Ellipses',
+  'Word / PDF / 图片 / Markdown': 'Word / PDF / Image / Markdown',
+  '需要先设置密码': 'Set a passcode first',
+  '这段文字已经很整齐了': 'This text is already tidy',
+  '已整理 {n} 段排版': 'Tidied {n}',
+  '命令总得做点什么': 'A command has to do something',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
+
+/// 数量在英文里要跟着单复数变，中文则把量词留在原文里：
+/// 中文只返回数字，英文返回「3 paragraphs」这样的整体，所以 [_en] 里
+/// 写成 `'已整理 {n} 段排版': 'Tidied {n}'` 就够了。
+String _q(int n, String zhUnit, String enOne, [String? enMany]) =>
+    I18n.isEn ? I18n.count(n, zhUnit, enOne, enMany) : '$n';
+
 Future<void> showCommandPalette(BuildContext context) async {
   final host = context;
   // 主题类命令不在面板里当场执行：先等面板彻底退场，
@@ -20,7 +91,7 @@ Future<void> showCommandPalette(BuildContext context) async {
   final request = await showGeneralDialog<_ThemeRequest>(
     context: context,
     barrierDismissible: true,
-    barrierLabel: '命令面板',
+    barrierLabel: _t('命令面板'),
     barrierColor: Colors.black.withValues(alpha: 0.18),
     transitionDuration: Motion.base,
     pageBuilder: (context, _, _) => _CommandDialog(hostContext: host),
@@ -102,182 +173,186 @@ class _CommandDialogState extends State<_CommandDialog> {
       for (final note in notes)
         _Command(
           icon: kindIcon(note.kind),
-          label: '打开：${note.title.trim().isEmpty ? '无题' : note.title.trim()}',
-          group: '笔记',
-          hint: note.excerpt.isEmpty ? '${note.words} 字' : note.excerpt,
+          label: _t('打开：{title}', {
+            'title': note.title.trim().isEmpty ? _t('无题') : note.title.trim(),
+          }),
+          group: _t('笔记'),
+          hint: note.excerpt.isEmpty
+              ? _t('{n} 字', {'n': _q(note.words, '字', 'word')})
+              : note.excerpt,
           isNote: true,
           action: () => state.openNote(note.id),
         ),
       _Command(
         icon: LucideIcons.calendarHeart,
-        label: '新建日记',
-        group: '新建',
-        hint: '天气 · 心情 · 三件小事',
+        label: _t('新建日记'),
+        group: _t('新建'),
+        hint: _t('天气 · 心情 · 三件小事'),
         shortcut: 'Ctrl N',
         action: () => state.createNote(kind: NoteKind.diary),
       ),
       _Command(
         icon: LucideIcons.penLine,
-        label: '新建随笔',
-        group: '新建',
-        hint: '一张空白纸',
+        label: _t('新建随笔'),
+        group: _t('新建'),
+        hint: _t('一张空白纸'),
         action: () => state.createNote(kind: NoteKind.note),
       ),
       _Command(
         icon: LucideIcons.feather,
-        label: '新建作文',
-        group: '新建',
-        hint: '题目 · 开头 · 正文 · 结尾',
+        label: _t('新建作文'),
+        group: _t('新建'),
+        hint: _t('题目 · 开头 · 正文 · 结尾'),
         action: () => state.createNote(kind: NoteKind.essay),
       ),
       _Command(
         icon: LucideIcons.sun,
-        label: '前往今日',
-        group: '前往',
-        hint: '今天写下的文字',
+        label: _t('前往今日'),
+        group: _t('前往'),
+        hint: _t('今天写下的文字'),
         action: () => state.setView('today'),
       ),
       _Command(
         icon: LucideIcons.library,
-        label: '全部笔记',
-        group: '前往',
-        hint: '所有写下的日子',
+        label: _t('全部笔记'),
+        group: _t('前往'),
+        hint: _t('所有写下的日子'),
         action: () => state.setView('all'),
       ),
       _Command(
         icon: LucideIcons.calendarDays,
-        label: '日历',
-        group: '前往',
-        hint: '按日期回看',
+        label: _t('日历'),
+        group: _t('前往'),
+        hint: _t('按日期回看'),
         action: () => state.setView('calendar'),
       ),
       _Command(
         icon: LucideIcons.tag,
-        label: '标签',
-        group: '前往',
-        hint: '按主题整理',
+        label: _t('标签'),
+        group: _t('前往'),
+        hint: _t('按主题整理'),
         action: () => state.setView('tags'),
       ),
       _Command(
         icon: LucideIcons.chartNoAxesColumn,
-        label: '写作统计',
-        group: '前往',
-        hint: '连续天数与热力图',
+        label: _t('写作统计'),
+        group: _t('前往'),
+        hint: _t('连续天数与热力图'),
         action: () => state.setView('stats'),
       ),
       _Command(
         icon: LucideIcons.settings,
-        label: '设置',
-        group: '前往',
-        hint: '外观 · 编辑器 · 数据',
+        label: _t('设置'),
+        group: _t('前往'),
+        hint: _t('外观 · 编辑器 · 数据'),
         shortcut: 'Ctrl ,',
         action: () => state.setView('settings'),
       ),
       if (session != null) ...[
         _Command(
           icon: LucideIcons.search,
-          label: '查找',
-          group: '编辑',
-          hint: '当前笔记内查找与替换',
+          label: _t('查找'),
+          group: _t('编辑'),
+          hint: _t('当前笔记内查找与替换'),
           shortcut: 'Ctrl F',
           action: session.openFind,
         ),
         _Command(
           icon: LucideIcons.listTree,
-          label: '目录',
-          group: '编辑',
-          hint: '按标题 1–3 生成大纲',
+          label: _t('目录'),
+          group: _t('编辑'),
+          hint: _t('按标题 1–3 生成大纲'),
           action: session.toggleOutline,
         ),
         _Command(
           icon: LucideIcons.wandSparkles,
-          label: '整理排版',
-          group: '编辑',
-          hint: '中英空格 · 半角标点 · 省略号',
+          label: _t('整理排版'),
+          group: _t('编辑'),
+          hint: _t('中英空格 · 半角标点 · 省略号'),
           action: () => _applyTypography(state),
         ),
         _Command(
           icon: LucideIcons.fileText,
-          label: '导出当前笔记…',
-          group: '操作',
-          hint: 'Word / PDF / 图片 / Markdown',
+          label: _t('导出当前笔记…'),
+          group: _t('操作'),
+          hint: _t('Word / PDF / 图片 / Markdown'),
           action: () => showExportSheet(widget.hostContext),
         ),
         _Command(
           icon: LucideIcons.bold,
-          label: '加粗',
-          group: '格式',
+          label: _t('加粗'),
+          group: _t('格式'),
           shortcut: 'Ctrl B',
           action: () => _toggleFormat(session, Attribute.bold),
         ),
         _Command(
           icon: LucideIcons.italic,
-          label: '倾斜',
-          group: '格式',
+          label: _t('倾斜'),
+          group: _t('格式'),
           shortcut: 'Ctrl I',
           action: () => _toggleFormat(session, Attribute.italic),
         ),
         _Command(
           icon: LucideIcons.underline,
-          label: '下划线',
-          group: '格式',
+          label: _t('下划线'),
+          group: _t('格式'),
           shortcut: 'Ctrl U',
           action: () => _toggleFormat(session, Attribute.underline),
         ),
         _Command(
           icon: LucideIcons.heading1,
-          label: '标题 1',
-          group: '格式',
+          label: _t('标题 1'),
+          group: _t('格式'),
           action: () => _setHeader(session, 1),
         ),
         _Command(
           icon: LucideIcons.heading2,
-          label: '标题 2',
-          group: '格式',
+          label: _t('标题 2'),
+          group: _t('格式'),
           action: () => _setHeader(session, 2),
         ),
         _Command(
           icon: LucideIcons.list,
-          label: '无序列表',
-          group: '格式',
+          label: _t('无序列表'),
+          group: _t('格式'),
           action: () => _toggleList(session, 'bullet'),
         ),
         _Command(
           icon: LucideIcons.listOrdered,
-          label: '有序列表',
-          group: '格式',
+          label: _t('有序列表'),
+          group: _t('格式'),
           action: () => _toggleList(session, 'ordered'),
         ),
         _Command(
           icon: LucideIcons.textQuote,
-          label: '引用',
-          group: '格式',
+          label: _t('引用'),
+          group: _t('格式'),
           action: () => _toggleFormat(session, Attribute.blockQuote),
         ),
       ],
       _Command(
         icon: LucideIcons.sun,
-        label: '外观：浅色',
-        group: '操作',
+        label: _t('外观：浅色'),
+        group: _t('操作'),
         themeMode: ThemeMode.light,
       ),
       _Command(
         icon: LucideIcons.moon,
-        label: '外观：深色',
-        group: '操作',
+        label: _t('外观：深色'),
+        group: _t('操作'),
         themeMode: ThemeMode.dark,
       ),
       _Command(
         icon: LucideIcons.sunMoon,
-        label: '外观：跟随系统',
-        group: '操作',
+        label: _t('外观：跟随系统'),
+        group: _t('操作'),
         themeMode: ThemeMode.system,
       ),
       _Command(
         icon: LucideIcons.lock,
-        label: '立即锁定',
-        group: '操作',
-        hint: '需要先设置密码',
+        label: _t('立即锁定'),
+        group: _t('操作'),
+        hint: _t('需要先设置密码'),
         action: () {
           if (state.settings.lockEnabled) state.lock();
         },
@@ -317,7 +392,11 @@ class _CommandDialogState extends State<_CommandDialog> {
     final count = state.session?.normalizeTypography() ?? 0;
     showToast(
       widget.hostContext,
-      count == 0 ? '这段文字已经很整齐了' : '已整理 $count 段排版',
+      count == 0
+          ? _t('这段文字已经很整齐了')
+          : _t('已整理 {n} 段排版', {
+              'n': _q(count, '段', 'paragraph', 'paragraphs'),
+            }),
     );
   }
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
@@ -478,7 +557,7 @@ class _CommandDialogState extends State<_CommandDialog> {
                           color: c.ink,
                         ),
                         decoration: InputDecoration(
-                          hintText: '搜索命令、页面或动作…',
+                          hintText: _t('搜索命令、页面或动作…'),
                           hintStyle: TextStyle(
                             fontFamily: 'NotoSansSC',
                             fontSize: 14.5,
@@ -492,7 +571,7 @@ class _CommandDialogState extends State<_CommandDialog> {
                     SoftIconButton(
                       icon: LucideIcons.x,
                       size: 28,
-                      tooltip: '关闭',
+                      tooltip: _t('关闭'),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ],
@@ -503,7 +582,7 @@ class _CommandDialogState extends State<_CommandDialog> {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 44),
                   child: Text(
-                    '没有匹配的命令',
+                    _t('没有匹配的命令'),
                     style: TextStyle(
                       fontFamily: 'NotoSansSC',
                       fontSize: 12,
@@ -533,7 +612,7 @@ class _CommandDialogState extends State<_CommandDialog> {
                     const Kbd('↓'),
                     const SizedBox(width: 6),
                     Text(
-                      '选择',
+                      _t('选择'),
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 9.5,
@@ -544,7 +623,7 @@ class _CommandDialogState extends State<_CommandDialog> {
                     const Kbd('Enter'),
                     const SizedBox(width: 6),
                     Text(
-                      '打开',
+                      _t('打开'),
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 9.5,
@@ -553,7 +632,7 @@ class _CommandDialogState extends State<_CommandDialog> {
                     ),
                     const Spacer(),
                     Text(
-                      '此记 · 命令面板',
+                      _t('此记 · 命令面板'),
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 9,
@@ -582,7 +661,7 @@ class _Command {
     this.hint,
     this.shortcut,
     this.isNote = false,
-  }) : assert(action != null || themeMode != null, '命令总得做点什么');
+  }) : assert(action != null || themeMode != null, _t('命令总得做点什么'));
 
   final IconData icon;
   final String label;

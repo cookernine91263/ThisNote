@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../core/i18n.dart';
 import '../core/icons.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
@@ -9,6 +11,20 @@ import '../core/ui.dart';
 import '../data/models.dart';
 import '../data/templates.dart';
 import '../state/app_state.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。
+/// 体裁与模板的名称、说明由 [NoteKind] / [noteTemplates] 自己翻译，这里不重复。
+const Map<String, String> _en = <String, String>{
+  '开始一页': 'Start a page',
+  '选一种开始的方式': 'Pick a way to begin',
+  '关闭': 'Close',
+  '日期': 'Date',
+  '所有内容只保存在本机': 'Everything stays on this device',
+  '空白开始': 'Start blank',
+  '用「{name}」开始': 'Start with “{name}”',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
 
 Future<void> showNewNoteSheet(BuildContext context) async {
   final isMobile = MediaQuery.sizeOf(context).width < 760;
@@ -91,17 +107,18 @@ class _NewNoteSheetState extends State<_NewNoteSheet> {
           Row(
             children: [
               Text(
-                '开始一页',
+                _t('开始一页'),
                 style: TextStyle(
-                  fontFamily: 'WenKai',
-                  fontSize: 25,
-                  letterSpacing: 1,
+                  fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
+                  fontSize: I18n.isEn ? 21 : 25,
+                  fontWeight: I18n.isEn ? FontWeight.w600 : null,
+                  letterSpacing: I18n.isEn ? 0.3 : 1,
                   color: c.ink,
                 ),
               ),
               const SizedBox(width: 10),
               Text(
-                '选一种开始的方式',
+                _t('选一种开始的方式'),
                 style: TextStyle(
                   fontFamily: 'NotoSansSC',
                   fontSize: 11,
@@ -112,7 +129,7 @@ class _NewNoteSheetState extends State<_NewNoteSheet> {
               SoftIconButton(
                 icon: LucideIcons.x,
                 size: 30,
-                tooltip: '关闭',
+                tooltip: _t('关闭'),
                 onPressed: () => Navigator.of(context).pop(),
               ),
             ],
@@ -168,7 +185,7 @@ class _NewNoteSheetState extends State<_NewNoteSheet> {
               Icon(LucideIcons.calendar, size: 14, color: c.inkMuted),
               const SizedBox(width: 6),
               Text(
-                '日期',
+                _t('日期'),
                 style: TextStyle(
                   fontFamily: 'NotoSansSC',
                   fontSize: 11.5,
@@ -194,7 +211,9 @@ class _NewNoteSheetState extends State<_NewNoteSheet> {
                     border: Border.all(color: c.line),
                   ),
                   child: Text(
-                    '${_date.year}年${_date.month}月${_date.day}日',
+                    I18n.isEn
+                        ? DateFormat.yMMMd().format(_date)
+                        : '${_date.year}年${_date.month}月${_date.day}日',
                     style: TextStyle(
                       fontFamily: 'NotoSansSC',
                       fontSize: 11,
@@ -205,7 +224,7 @@ class _NewNoteSheetState extends State<_NewNoteSheet> {
               ),
               const Spacer(),
               Text(
-                '所有内容只保存在本机',
+                _t('所有内容只保存在本机'),
                 style: TextStyle(
                   fontFamily: 'NotoSansSC',
                   fontSize: 10,
@@ -239,7 +258,9 @@ class _NewNoteSheetState extends State<_NewNoteSheet> {
                   const Icon(LucideIcons.penLine, size: 15),
                   const SizedBox(width: 8),
                   Text(
-                    _template == null ? '空白开始' : '用「${_template!.name}」开始',
+                    _template == null
+                        ? _t('空白开始')
+                        : _t('用「{name}」开始', {'name': _template!.name}),
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                   ),
                 ],

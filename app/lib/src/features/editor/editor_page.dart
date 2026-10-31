@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/format.dart';
+import '../../core/i18n.dart';
 import '../../core/icons.dart';
 import '../../core/motion.dart';
 import '../../core/theme.dart';
@@ -25,6 +26,73 @@ import 'huazi.dart';
 import 'image_embed.dart';
 import 'outline_panel.dart';
 import 'quill_theme.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。
+const Map<String, String> _en = <String, String>{
+  '返回': 'Back',
+  '{n} 字': '{n} words',
+  '正在写…': 'Writing…',
+  '正在保存': 'Saving',
+  '保存失败': 'Save failed',
+  '已保存': 'Saved',
+  '已保存 {time}': 'Saved {time}',
+  '查找 · Ctrl F': 'Find · Ctrl F',
+  '目录': 'Outline',
+  '导出 · 图片 / PDF / Word': 'Export · Image / PDF / Word',
+  '历史版本': 'Version history',
+  '专注模式 · Ctrl Shift F': 'Focus mode · Ctrl Shift F',
+  '更多': 'More',
+  '已移到回收站': 'Moved to Trash',
+  '撤销': 'Undo',
+  '这段文字已经很整齐了': 'This text is already tidy',
+  '已整理 {count} 段排版，Ctrl Z 可撤销':
+      'Tidied {count} paragraphs — press Ctrl Z to undo',
+  '已复制为 Markdown': 'Copied as Markdown',
+  '已复制为纯文本': 'Copied as plain text',
+  '取消置顶': 'Unpin',
+  '置顶': 'Pin',
+  '取消收藏': 'Remove favorite',
+  '收藏': 'Favorite',
+  '导出…': 'Export…',
+  '整理排版': 'Tidy typography',
+  '复制为 Markdown': 'Copy as Markdown',
+  '复制为纯文本': 'Copy as plain text',
+  '移到回收站': 'Move to Trash',
+  '退出专注模式': 'Exit focus mode',
+  '此记 · 专注模式': 'ThisNote · Focus mode',
+  '从这里开始写…': 'Start writing here…',
+  '无题': 'Untitled',
+  '标签': 'Tag',
+  '切换类型': 'Change type',
+  '心情': 'Mood',
+  '天气': 'Weather',
+  '不记录': 'None',
+  '已选 {selected} 字 · 共 {words} 字':
+      '{selected} words selected · {words} total',
+  '保存失败：{detail}': 'Save failed: {detail}',
+  '文件没有写进去，可能是磁盘空间或权限的问题。':
+      'The file could not be written — check disk space or permissions.',
+  '全文已复制，可以先粘到别处':
+      'Everything copied — paste it somewhere safe for now',
+  '纯文本': 'Plain text',
+  '已另存为 {name}': 'Saved as {name}',
+  '另存失败：{e}': 'Save as failed: {e}',
+  '重试': 'Retry',
+  '复制全文': 'Copy all',
+  '另存为…': 'Save as…',
+  '书写时每 5 分钟自动留存一次，最多保留 40 个版本。':
+      'A version is kept every 5 minutes while you write, up to 40 versions.',
+  '还没有历史版本。继续写一会儿，此记会替你留着。':
+      'No versions yet. Keep writing — ThisNote will hold on to them.',
+  ' · 最近': ' · latest',
+  '回到这个版本？': 'Return to this version?',
+  '当前内容会先存成一个新的历史版本，之后还能再回来。':
+      'Your current text is saved as a new version first, so you can come back to it.',
+  '回到这里': 'Go back here',
+  '恢复': 'Restore',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
 
 class EditorPage extends StatelessWidget {
   const EditorPage({
@@ -180,7 +248,7 @@ class _EditorTopBar extends StatelessWidget {
           if (mobile)
             SoftIconButton(
               icon: LucideIcons.arrowLeft,
-              tooltip: '返回',
+              tooltip: _t('返回'),
               onPressed: onBack,
             )
           else ...[
@@ -211,7 +279,7 @@ class _EditorTopBar extends StatelessWidget {
             AnimatedBuilder(
               animation: session.controller,
               builder: (context, _) => Text(
-                '${session.words} 字',
+                _t('{n} 字', {'n': session.words}),
                 style: TextStyle(
                   fontFamily: 'NotoSansSC',
                   fontSize: 10.5,
@@ -227,12 +295,14 @@ class _EditorTopBar extends StatelessWidget {
               final status =
                   session.dirty ? SaveStatus.saving : state.saveStatus;
               final statusText = switch (status) {
-                SaveStatus.saving => session.dirty ? '正在写…' : '正在保存',
-                SaveStatus.error => '保存失败',
+                SaveStatus.saving => _t(session.dirty ? '正在写…' : '正在保存'),
+                SaveStatus.error => _t('保存失败'),
                 SaveStatus.saved => session.lastSaved == null
-                    ? '已保存'
-                    : '已保存 ${timeLabel(session.lastSaved!)}',
-                SaveStatus.idle => '已保存',
+                    ? _t('已保存')
+                    : _t('已保存 {time}', {
+                        'time': timeLabel(session.lastSaved!),
+                      }),
+                SaveStatus.idle => _t('已保存'),
               };
               final statusColor = switch (status) {
                 SaveStatus.saving => c.gold,
@@ -272,13 +342,13 @@ class _EditorTopBar extends StatelessWidget {
               children: [
                 SoftIconButton(
                   icon: LucideIcons.search,
-                  tooltip: '查找 · Ctrl F',
+                  tooltip: _t('查找 · Ctrl F'),
                   active: session.findOpen,
                   onPressed: () => session.openFind(),
                 ),
                 SoftIconButton(
                   icon: LucideIcons.listTree,
-                  tooltip: '目录',
+                  tooltip: _t('目录'),
                   active: session.outlineOpen,
                   onPressed: session.toggleOutline,
                 ),
@@ -287,18 +357,18 @@ class _EditorTopBar extends StatelessWidget {
           ),
           SoftIconButton(
             icon: LucideIcons.share2,
-            tooltip: '导出 · 图片 / PDF / Word',
+            tooltip: _t('导出 · 图片 / PDF / Word'),
             onPressed: () => showExportSheet(context),
           ),
           SoftIconButton(
             icon: LucideIcons.history,
-            tooltip: '历史版本',
+            tooltip: _t('历史版本'),
             onPressed: () => _showHistory(context, state, session),
           ),
           if (!mobile)
             SoftIconButton(
               icon: LucideIcons.focus,
-              tooltip: '专注模式 · Ctrl Shift F',
+              tooltip: _t('专注模式 · Ctrl Shift F'),
               onPressed: onToggleZen,
             ),
           _MoreMenu(mobile: mobile, onBack: onBack),
@@ -331,7 +401,7 @@ class _EditorTopBar extends StatelessWidget {
                   Row(
                     children: [
                       Text(
-                        '历史版本',
+                        _t('历史版本'),
                         style: TextStyle(
                           fontFamily: 'WenKai',
                           fontSize: 22,
@@ -348,7 +418,7 @@ class _EditorTopBar extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '书写时每 5 分钟自动留存一次，最多保留 40 个版本。',
+                    _t('书写时每 5 分钟自动留存一次，最多保留 40 个版本。'),
                     style: TextStyle(
                       fontFamily: 'NotoSansSC',
                       fontSize: 10,
@@ -373,7 +443,7 @@ class _EditorTopBar extends StatelessWidget {
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 34),
                             child: Text(
-                              '还没有历史版本。继续写一会儿，此记会替你留着。',
+                              _t('还没有历史版本。继续写一会儿，此记会替你留着。'),
                               style: TextStyle(
                                 fontFamily: 'NotoSansSC',
                                 fontSize: 11,
@@ -411,8 +481,9 @@ class _EditorTopBar extends StatelessWidget {
                                         ),
                                       ),
                                       Text(
-                                        '${timeLabel(s.savedAt)} · ${s.words} 字'
-                                        '${latest ? " · 最近" : ""}',
+                                        '${timeLabel(s.savedAt)} · '
+                                        '${_t('{n} 字', {'n': s.words})}'
+                                        '${latest ? _t(' · 最近') : ''}',
                                         style: TextStyle(
                                           fontFamily: 'NotoSansSC',
                                           fontSize: 9.5,
@@ -426,16 +497,16 @@ class _EditorTopBar extends StatelessWidget {
                                   onPressed: () async {
                                      final ok = await showConfirm(
                                        context,
-                                       title: '回到这个版本？',
-                                       message: '当前内容会先存成一个新的历史版本，之后还能再回来。',
-                                       confirmLabel: '回到这里',
+                                       title: _t('回到这个版本？'),
+                                       message: _t('当前内容会先存成一个新的历史版本，之后还能再回来。'),
+                                       confirmLabel: _t('回到这里'),
                                      );                                    if (ok) {
                                       await state.restoreSnapshot(s);
                                       if (context.mounted) Navigator.of(context).pop();
                                     }
                                   },
                                   child: Text(
-                                    '恢复',
+                                    _t('恢复'),
                                     style: TextStyle(
                                       fontFamily: 'NotoSansSC',
                                       fontSize: 11,
@@ -471,7 +542,7 @@ class _MoreMenu extends StatelessWidget {
     final state = context.watch<AppState>();
     final note = state.current;
     return PopupMenuButton<String>(
-      tooltip: '更多',
+      tooltip: _t('更多'),
       color: c.surface,
       position: PopupMenuPosition.under,
       icon: Icon(LucideIcons.ellipsis, size: 18, color: c.inkSoft),
@@ -490,8 +561,8 @@ class _MoreMenu extends StatelessWidget {
             // 不再先弹确认框：删除立刻发生，用撤销兜住误触。
             showToast(
               context,
-              '已移到回收站',
-              actionLabel: '撤销',
+              _t('已移到回收站'),
+              actionLabel: _t('撤销'),
               onAction: () => state.restoreNote(note.id),
             );
             await state.trashNote(note.id);
@@ -502,7 +573,11 @@ class _MoreMenu extends StatelessWidget {
             if (context.mounted) {
               showToast(
                 context,
-                count == 0 ? '这段文字已经很整齐了' : '已整理 $count 段排版，Ctrl Z 可撤销',
+                count == 0
+                    ? _t('这段文字已经很整齐了')
+                    : _t('已整理 {count} 段排版，Ctrl Z 可撤销', {
+                        'count': count,
+                      }),
                 icon: count == 0 ? LucideIcons.check : LucideIcons.sparkles,
               );
             }
@@ -512,14 +587,14 @@ class _MoreMenu extends StatelessWidget {
               ClipboardData(text: NoteExporter(state.store).markdown(note)),
             );
             if (context.mounted) {
-              showToast(context, '已复制为 Markdown', icon: LucideIcons.check);
+              showToast(context, _t('已复制为 Markdown'), icon: LucideIcons.check);
             }
             break;
           case 'copyText':
             await state.saveNow();
             await Clipboard.setData(ClipboardData(text: note.text));
             if (context.mounted) {
-              showToast(context, '已复制为纯文本', icon: LucideIcons.check);
+              showToast(context, _t('已复制为纯文本'), icon: LucideIcons.check);
             }
             break;
           case 'export':
@@ -530,20 +605,23 @@ class _MoreMenu extends StatelessWidget {
       itemBuilder: (context) => [
         PopupMenuItem(
           value: 'pin',
-          child: Text(note?.pinned == true ? '取消置顶' : '置顶'),
+          child: Text(note?.pinned == true ? _t('取消置顶') : _t('置顶')),
         ),
         PopupMenuItem(
           value: 'fav',
-          child: Text(note?.favorite == true ? '取消收藏' : '收藏'),
+          child: Text(note?.favorite == true ? _t('取消收藏') : _t('收藏')),
         ),
-        const PopupMenuItem(value: 'export', child: Text('导出…')),
-        const PopupMenuItem(value: 'typography', child: Text('整理排版')),
-        const PopupMenuItem(value: 'copyMd', child: Text('复制为 Markdown')),
-        const PopupMenuItem(value: 'copyText', child: Text('复制为纯文本')),
+        PopupMenuItem(value: 'export', child: Text(_t('导出…'))),
+        PopupMenuItem(value: 'typography', child: Text(_t('整理排版'))),
+        PopupMenuItem(value: 'copyMd', child: Text(_t('复制为 Markdown'))),
+        PopupMenuItem(value: 'copyText', child: Text(_t('复制为纯文本'))),
         const PopupMenuDivider(),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'trash',
-          child: Text('移到回收站', style: TextStyle(color: Color(0xFFB0473A))),
+          child: Text(
+            _t('移到回收站'),
+            style: const TextStyle(color: Color(0xFFB0473A)),
+          ),
         ),
       ],
     );
@@ -621,7 +699,7 @@ class _EditorCanvas extends StatelessWidget {
                                 focusNode: session.editorFocus,
                                 scrollController: session.scrollController,
                                 config: QuillEditorConfig(
-                                  placeholder: '从这里开始写…',
+                                  placeholder: _t('从这里开始写…'),
                                   padding: EdgeInsets.fromLTRB(
                                     mobile ? 22 : 56,
                                     2,
@@ -692,7 +770,7 @@ class _EditorCanvas extends StatelessWidget {
               children: [
                 SoftIconButton(
                   icon: LucideIcons.minimize2,
-                  tooltip: '退出专注模式',
+                  tooltip: _t('退出专注模式'),
                   onPressed: onToggleZen,
                 ),
               ],
@@ -707,7 +785,7 @@ class _EditorCanvas extends StatelessWidget {
                 Icon(LucideIcons.feather, size: 12, color: c.inkMuted),
                 const SizedBox(width: 6),
                 Text(
-                  '此记 · 专注模式',
+                  _t('此记 · 专注模式'),
                   style: TextStyle(
                     fontFamily: 'WenKai',
                     fontSize: 10.5,
@@ -785,7 +863,7 @@ class _TitleBlock extends StatelessWidget {
               color: c.ink,
             ),
             decoration: InputDecoration(
-              hintText: '无题',
+              hintText: _t('无题'),
               hintStyle: TextStyle(
                 fontFamily: 'WenKai',
                 fontSize: mobile ? 29 : 36,
@@ -830,7 +908,7 @@ class _TitleBlock extends StatelessWidget {
                             Icon(LucideIcons.plus, size: 10, color: c.inkMuted),
                             const SizedBox(width: 3),
                             Text(
-                              '标签',
+                              _t('标签'),
                               style: TextStyle(
                                 fontFamily: 'NotoSansSC',
                                 fontSize: 10,
@@ -882,7 +960,7 @@ class _KindMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     return PopupMenuButton<NoteKind>(
-      tooltip: '切换类型',
+      tooltip: _t('切换类型'),
       color: c.surface,
       position: PopupMenuPosition.under,
       onSelected: session.setKind,
@@ -934,12 +1012,12 @@ class _MoodMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     return PopupMenuButton<int>(
-      tooltip: '心情',
+      tooltip: _t('心情'),
       color: c.surface,
       position: PopupMenuPosition.under,
       onSelected: (v) => session.setMood(v == 0 ? null : v),
       itemBuilder: (context) => [
-        const PopupMenuItem(value: 0, child: Text('不记录')),
+        PopupMenuItem(value: 0, child: Text(_t('不记录'))),
         for (final m in Mood.values)
           PopupMenuItem(
             value: m.score,
@@ -954,7 +1032,7 @@ class _MoodMenu extends StatelessWidget {
       ],
       child: _MetaPill(
         icon: mood == null ? LucideIcons.smile : moodIcon(mood!),
-        label: mood?.label ?? '心情',
+        label: mood?.label ?? _t('心情'),
         color: mood?.color,
       ),
     );
@@ -970,12 +1048,12 @@ class _WeatherMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     return PopupMenuButton<String>(
-      tooltip: '天气',
+      tooltip: _t('天气'),
       color: c.surface,
       position: PopupMenuPosition.under,
       onSelected: (v) => session.setWeather(v.isEmpty ? null : v),
       itemBuilder: (context) => [
-        const PopupMenuItem(value: '', child: Text('不记录')),
+        PopupMenuItem(value: '', child: Text(_t('不记录'))),
         for (final w in Weather.values)
           PopupMenuItem(
             value: w.key,
@@ -990,7 +1068,7 @@ class _WeatherMenu extends StatelessWidget {
       ],
       child: _MetaPill(
         icon: weather == null ? LucideIcons.cloudSun : weatherIcon(weather!.key)!,
-        label: weather?.label ?? '天气',
+        label: weather?.label ?? _t('天气'),
       ),
     );
   }
@@ -1048,8 +1126,11 @@ class _EditorFooter extends StatelessWidget {
       builder: (context, _) {
         final selected = session.selectedWords;
         final label = selected > 0
-            ? '已选 $selected 字 · 共 ${session.words} 字'
-            : '${session.words} 字';
+            ? _t('已选 {selected} 字 · 共 {words} 字', {
+                'selected': selected,
+                'words': session.words,
+              })
+            : _t('{n} 字', {'n': session.words});
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1089,7 +1170,7 @@ class _SaveErrorBanner extends StatelessWidget {
   String get _detail {
     final raw =
         (state.lastSaveError ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (raw.isEmpty) return '文件没有写进去，可能是磁盘空间或权限的问题。';
+    if (raw.isEmpty) return _t('文件没有写进去，可能是磁盘空间或权限的问题。');
     return raw.length > 110 ? '${raw.substring(0, 110)}…' : raw;
   }
 
@@ -1102,28 +1183,31 @@ class _SaveErrorBanner extends StatelessWidget {
   Future<void> _copyAll(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: _payload));
     if (context.mounted) {
-      showToast(context, '全文已复制，可以先粘到别处', icon: LucideIcons.check);
+      showToast(context, _t('全文已复制，可以先粘到别处'), icon: LucideIcons.check);
     }
   }
 
   Future<void> _saveAs(BuildContext context) async {
     final rawTitle = session.note.title.trim();
-    final safe = (rawTitle.isEmpty ? '无题' : rawTitle)
+    final safe = (rawTitle.isEmpty ? _t('无题') : rawTitle)
         .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
     final location = await getSaveLocation(
       suggestedName: '$safe.txt',
-      acceptedTypeGroups: const [
-        XTypeGroup(label: '纯文本', extensions: ['txt']),
+      acceptedTypeGroups: [
+        XTypeGroup(label: _t('纯文本'), extensions: const ['txt']),
       ],
     );
     if (location == null) return;
     try {
       await File(location.path).writeAsString(_payload, flush: true);
       if (context.mounted) {
-        showToast(context, '已另存为 ${p.basename(location.path)}');
+        showToast(
+          context,
+          _t('已另存为 {name}', {'name': p.basename(location.path)}),
+        );
       }
     } catch (e) {
-      if (context.mounted) showToast(context, '另存失败：$e');
+      if (context.mounted) showToast(context, _t('另存失败：{e}', {'e': e}));
     }
   }
 
@@ -1165,7 +1249,7 @@ class _SaveErrorBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '保存失败：$_detail',
+              _t('保存失败：{detail}', {'detail': _detail}),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -1177,9 +1261,9 @@ class _SaveErrorBanner extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 4),
-          _button(context, '重试', () => state.saveNow()),
-          _button(context, '复制全文', () => _copyAll(context)),
-          if (!mobile) _button(context, '另存为…', () => _saveAs(context)),
+          _button(context, _t('重试'), () => state.saveNow()),
+          _button(context, _t('复制全文'), () => _copyAll(context)),
+          if (!mobile) _button(context, _t('另存为…'), () => _saveAs(context)),
         ],
       ),
     );

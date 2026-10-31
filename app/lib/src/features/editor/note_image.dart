@@ -11,10 +11,37 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/format.dart';
+import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。
+const Map<String, String> _en = <String, String>{
+  '此记 · 图片': 'ThisNote · Image',
+  'PNG 图片': 'PNG image',
+  '图片已保存': 'Image saved',
+  '导出图片失败：{e}': 'Could not export the image: {e}',
+  '把这一页变成图片': 'Turn this page into an image',
+  '不截屏，重新排一张可以收藏的纸':
+      'No screenshot — a keepsake page, freshly typeset',
+  '纸色': 'Paper',
+  '日期': 'Date',
+  '标签': 'Tags',
+  '长图会按内容自动延展': 'The long image grows with the content',
+  '正在生成…': 'Generating…',
+  '保存 PNG': 'Save PNG',
+  '无题': 'Untitled',
+  '此记': 'ThisNote',
+  '此记 · ThisNote': 'ThisNote',
+  '这一页还没有字。': 'This page has no words yet.',
+  '{words} 字': '{words} words',
+  '［图片］': '[Image]',
+  '此记-{stamp}': 'ThisNote-{stamp}',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
 
 enum NoteImageTheme { paper, ink, rose, sage }
 
@@ -119,23 +146,25 @@ class _PngDialogState extends State<_PngDialog> {
         await SharePlus.instance.share(
           ShareParams(
             files: [XFile(file.path)],
-            subject: widget.note.title.isEmpty ? '此记 · 图片' : widget.note.title,
+            subject: widget.note.title.isEmpty ? _t('此记 · 图片') : widget.note.title,
           ),
         );
       } else {
         final location = await getSaveLocation(
           suggestedName: '$base.png',
-          acceptedTypeGroups: const [
-            XTypeGroup(label: 'PNG 图片', extensions: ['png']),
+          acceptedTypeGroups: [
+            XTypeGroup(label: _t('PNG 图片'), extensions: const ['png']),
           ],
         );
         if (location != null) {
           await File(location.path).writeAsBytes(bytes, flush: true);
-          if (mounted) showToast(context, '图片已保存');
+          if (mounted) showToast(context, _t('图片已保存'));
         }
       }
     } catch (e) {
-      if (mounted) showToast(context, '导出图片失败：$e');
+      if (mounted) {
+        showToast(context, _t('导出图片失败：{e}', {'e': e}));
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -179,7 +208,7 @@ class _PngDialogState extends State<_PngDialog> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '把这一页变成图片',
+                            _t('把这一页变成图片'),
                             style: TextStyle(
                               fontFamily: 'WenKai',
                               fontSize: 23,
@@ -188,7 +217,7 @@ class _PngDialogState extends State<_PngDialog> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '不截屏，重新排一张可以收藏的纸',
+                            _t('不截屏，重新排一张可以收藏的纸'),
                             style: TextStyle(
                               fontFamily: 'NotoSansSC',
                               fontSize: 10,
@@ -243,7 +272,7 @@ class _PngDialogState extends State<_PngDialog> {
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
-                            '纸色',
+                            _t('纸色'),
                             style: TextStyle(
                               fontFamily: 'NotoSansSC',
                               fontSize: 10,
@@ -257,13 +286,13 @@ class _PngDialogState extends State<_PngDialog> {
                               onTap: () => setState(() => _theme = theme),
                             ),
                           _ToggleText(
-                            label: '日期',
+                            label: _t('日期'),
                             value: _showMeta,
                             onTap: () =>
                                 setState(() => _showMeta = !_showMeta),
                           ),
                           _ToggleText(
-                            label: '标签',
+                            label: _t('标签'),
                             value: _showTags,
                             onTap: () =>
                                 setState(() => _showTags = !_showTags),
@@ -274,7 +303,7 @@ class _PngDialogState extends State<_PngDialog> {
                       Row(
                         children: [
                           Text(
-                            '长图会按内容自动延展',
+                            _t('长图会按内容自动延展'),
                             style: TextStyle(
                               fontFamily: 'NotoSansSC',
                               fontSize: 9.5,
@@ -301,7 +330,7 @@ class _PngDialogState extends State<_PngDialog> {
                                     ),
                                   )
                                 : const Icon(LucideIcons.download, size: 15),
-                            label: Text(_saving ? '正在生成…' : '保存 PNG'),
+                            label: Text(_t(_saving ? '正在生成…' : '保存 PNG')),
                           ),
                         ],
                       ),
@@ -418,7 +447,7 @@ class NoteImageCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final paper = _Paper.of(theme);
     final scale = (width / 520).clamp(0.6, 1.0);
-    final title = note.title.trim().isEmpty ? '无题' : note.title.trim();
+    final title = note.title.trim().isEmpty ? _t('无题') : note.title.trim();
     final lines = _Lines(note.delta, paper, scale).parse();
     final date = dateLabel(note.createdAt);
     return Container(
@@ -463,7 +492,7 @@ class NoteImageCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 9),
                     Text(
-                      '此记',
+                      _t('此记'),
                       style: TextStyle(
                         fontFamily: 'WenKai',
                         fontSize: 13 * scale,
@@ -540,7 +569,7 @@ class NoteImageCard extends StatelessWidget {
                 SizedBox(height: 18 * scale),
                 if (lines.isEmpty)
                   Text(
-                    '这一页还没有字。',
+                    _t('这一页还没有字。'),
                     style: TextStyle(
                       fontFamily: 'NotoSerifSC',
                       fontSize: 14 * scale,
@@ -553,7 +582,7 @@ class NoteImageCard extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      '${note.words} 字',
+                      _t('{words} 字', {'words': note.words}),
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 9 * scale,
@@ -562,7 +591,7 @@ class NoteImageCard extends StatelessWidget {
                     ),
                     const Spacer(),
                     Text(
-                      '此记 · ThisNote',
+                      _t('此记 · ThisNote'),
                       style: TextStyle(
                         fontFamily: 'WenKai',
                         fontSize: 10 * scale,
@@ -718,7 +747,7 @@ class _Lines {
         }
       } else if (insert is Map && insert['image'] is String) {
         spans.add(TextSpan(
-          text: '［图片］',
+          text: _t('［图片］'),
           style: TextStyle(
             fontFamily: 'NotoSansSC',
             fontSize: 10 * scale,
@@ -794,7 +823,7 @@ class _Lines {
 
 String _safeName(String title) {
   final base = title.trim().isEmpty
-      ? '此记-${DateTime.now().millisecondsSinceEpoch}'
+      ? _t('此记-{stamp}', {'stamp': DateTime.now().millisecondsSinceEpoch})
       : title.trim();
   final clean = base.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
   return clean.substring(0, clean.length > 50 ? 50 : clean.length);

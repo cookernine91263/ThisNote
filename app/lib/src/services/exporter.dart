@@ -8,20 +8,40 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../core/format.dart';
+import '../core/i18n.dart';
 import '../data/models.dart';
 import '../data/repository.dart';
 import '../features/editor/huazi.dart';
+
+/// 导出文件里会出现的固定文案（标题占位、作者、日期标签等）。
+const _en = <String, String>{
+  'Word 文档': 'Word document',
+  'PNG 图片': 'PNG image',
+  '网页 HTML': 'Web page (HTML)',
+  '纯文本': 'Plain text',
+  '保留标题、加粗、颜色与图片': 'Keeps headings, bold, color and images',
+  '适合打印与分享的固定版式': 'A fixed layout for printing and sharing',
+  '一张排版好的长图，适合收藏与分享':
+      'One long, well-set image for keeping or sharing',
+  '通用纯文本格式，便于迁移': 'A universal plain-text format, easy to move',
+  '带排版的网页，可直接打开': 'A styled web page you can open directly',
+  '只要文字，不要格式': 'Just the words, no formatting',
+  '无题': 'Untitled',
+  '图片': 'image',
+  '此记 · ThisNote': 'ThisNote',
+  '此记 · ThisNote · 导出于 {date}': 'ThisNote · Exported on {date}',
+};
 
 enum ExportFormat { docx, pdf, png, markdown, html, txt }
 
 extension ExportFormatX on ExportFormat {
   String get label => switch (this) {
-        ExportFormat.docx => 'Word 文档',
-        ExportFormat.pdf => 'PDF',
-        ExportFormat.png => 'PNG 图片',
-        ExportFormat.markdown => 'Markdown',
-        ExportFormat.html => '网页 HTML',
-        ExportFormat.txt => '纯文本',
+        ExportFormat.docx => tr('Word 文档', null, _en),
+        ExportFormat.pdf => tr('PDF', null, _en),
+        ExportFormat.png => tr('PNG 图片', null, _en),
+        ExportFormat.markdown => tr('Markdown', null, _en),
+        ExportFormat.html => tr('网页 HTML', null, _en),
+        ExportFormat.txt => tr('纯文本', null, _en),
       };
 
   String get extension => switch (this) {
@@ -34,14 +54,29 @@ extension ExportFormatX on ExportFormat {
       };
 
   String get description => switch (this) {
-        ExportFormat.docx => '保留标题、加粗、颜色与图片',
-        ExportFormat.pdf => '适合打印与分享的固定版式',
-        ExportFormat.png => '一张排版好的长图，适合收藏与分享',
-        ExportFormat.markdown => '通用纯文本格式，便于迁移',
-        ExportFormat.html => '带排版的网页，可直接打开',
-        ExportFormat.txt => '只要文字，不要格式',
+        ExportFormat.docx => tr('保留标题、加粗、颜色与图片', null, _en),
+        ExportFormat.pdf => tr('适合打印与分享的固定版式', null, _en),
+        ExportFormat.png => tr('一张排版好的长图，适合收藏与分享', null, _en),
+        ExportFormat.markdown => tr('通用纯文本格式，便于迁移', null, _en),
+        ExportFormat.html => tr('带排版的网页，可直接打开', null, _en),
+        ExportFormat.txt => tr('只要文字，不要格式', null, _en),
       };
 }
+
+/// 没有标题时的占位。
+String _titleOf(Note note) =>
+    note.title.trim().isEmpty ? tr('无题', null, _en) : note.title.trim();
+
+/// 导出页眉/正文里那行「文体 · 日期 · 字数」。
+/// [compact] 用短日期（Markdown 头部沿用原来的短日期）。
+String _metaLine(Note note, {bool compact = false}) =>
+    '${note.kind.label} · '
+    '${compact ? shortDate(note.createdAt) : dateLabel(note.createdAt)} · '
+    '${I18n.count(note.words, '字', 'word')}';
+
+/// 导出文件末尾的落款。
+String _exportedOn(DateTime when) =>
+    tr('此记 · ThisNote · 导出于 {date}', {'date': dateLabel(when)}, _en);
 
 class NoteExporter {
   NoteExporter(this.store);
@@ -233,12 +268,12 @@ class NoteExporter {
     final light = _pdfLight!;
     final oblique = _pdfOblique!;
     final wenkai = _pdfWenKai!;
-    final title = note.title.trim().isEmpty ? '无题' : note.title.trim();
+    final title = _titleOf(note);
 
     final doc = pw.Document(
       title: title,
-      author: '此记 · ThisNote',
-      creator: '此记 · ThisNote',
+      author: tr('此记 · ThisNote', null, _en),
+      creator: tr('此记 · ThisNote', null, _en),
     );
 
     final widgets = <pw.Widget>[
@@ -253,7 +288,7 @@ class NoteExporter {
       ),
       pw.SizedBox(height: 6),
       pw.Text(
-        '${note.kind.label} · ${dateLabel(note.createdAt)} · ${note.words} 字',
+        _metaLine(note),
         style: pw.TextStyle(
           font: regular,
           fontSize: 9,
@@ -400,7 +435,7 @@ class NoteExporter {
     widgets.add(pw.SizedBox(height: 16));
     widgets.add(
       pw.Text(
-        '此记 · ThisNote · 导出于 ${dateLabel(DateTime.now())}',
+        _exportedOn(DateTime.now()),
         style: pw.TextStyle(
           font: regular,
           fontSize: 8,
@@ -527,10 +562,10 @@ class NoteExporter {
     final parser = _DeltaParser(note);
     parser.parseSync();
     final out = StringBuffer();
-    final title = note.title.trim().isEmpty ? '无题' : note.title.trim();
+    final title = _titleOf(note);
     out.writeln('# $title');
     out.writeln();
-    out.writeln('> ${note.kind.label} · ${shortDate(note.createdAt)} · ${note.words} 字');
+    out.writeln('> ${_metaLine(note, compact: true)}');
     out.writeln();
     var ordered = 0;
     for (final block in parser.blocks) {
@@ -540,7 +575,7 @@ class NoteExporter {
         continue;
       }
       final text = block.runs.map((r) {
-        if (r.isImage) return '![图片](${r.imagePath})';
+        if (r.isImage) return '![${tr('图片', null, _en)}](${r.imagePath})';
         var t = r.text;
         final a = r.attrs;
         if (a['code'] == true) t = '`$t`';
@@ -582,8 +617,9 @@ class NoteExporter {
     final parser = _DeltaParser(note);
     await parser.parse(store);
     final c = StringBuffer();
-    final title = note.title.trim().isEmpty ? '无题' : note.title.trim();
-    c.writeln('<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">');
+    final title = _titleOf(note);
+    final lang = I18n.isEn ? 'en' : 'zh-CN';
+    c.writeln('<!doctype html><html lang="$lang"><head><meta charset="utf-8">');
     c.writeln('<meta name="viewport" content="width=device-width,initial-scale=1">');
     c.writeln('<title>${_esc(title)}</title>');
     c.writeln('''<style>
@@ -613,7 +649,7 @@ class NoteExporter {
     </style></head><body><main>''');
     c.writeln('<div class="title">${_esc(title)}</div>');
     c.writeln(
-      '<div class="meta">${note.kind.label} · ${dateLabel(note.createdAt)} · ${note.words} 字</div>',
+      '<div class="meta">${_metaLine(note)}</div>',
     );
     var ordered = 0;
     for (final block in parser.blocks) {
@@ -695,14 +731,14 @@ class NoteExporter {
         c.writeln('<p>$text</p>');
       }
     }
-    c.writeln('<footer>此记 · ThisNote · 导出于 ${dateLabel(DateTime.now())}</footer>');
+    c.writeln('<footer>${_exportedOn(DateTime.now())}</footer>');
     c.writeln('</main></body></html>');
     return c.toString();
   }
 
   String txt(Note note) {
-    final title = note.title.trim().isEmpty ? '无题' : note.title.trim();
-    return '$title\n\n${note.kind.label} · ${dateLabel(note.createdAt)} · ${note.words} 字\n\n${note.text}\n';
+    final title = _titleOf(note);
+    return '$title\n\n${_metaLine(note)}\n\n${note.text}\n';
   }
 
   // ---------------------------------------------------------------------------
@@ -877,9 +913,9 @@ class NoteExporter {
       '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
       'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" '
       'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
-      '<dc:title>${_esc(note.title.isEmpty ? '无题' : note.title)}</dc:title>'
-      '<dc:creator>此记 · ThisNote</dc:creator>'
-      '<cp:lastModifiedBy>此记 · ThisNote</cp:lastModifiedBy>'
+      '<dc:title>${_esc(_titleOf(note))}</dc:title>'
+      '<dc:creator>${_esc(tr('此记 · ThisNote', null, _en))}</dc:creator>'
+      '<cp:lastModifiedBy>${_esc(tr('此记 · ThisNote', null, _en))}</cp:lastModifiedBy>'
       '<dcterms:created xsi:type="dcterms:W3CDTF">${note.createdAt.toUtc().toIso8601String()}</dcterms:created>'
       '<dcterms:modified xsi:type="dcterms:W3CDTF">${DateTime.now().toUtc().toIso8601String()}</dcterms:modified>'
       '</cp:coreProperties>';
@@ -887,7 +923,7 @@ class NoteExporter {
   String _app() => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
       '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" '
       'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">'
-      '<Application>此记 · ThisNote</Application></Properties>';
+      '<Application>${_esc(tr('此记 · ThisNote', null, _en))}</Application></Properties>';
 }
 
 /// 图片宽度（相对正文宽度）与对齐，写在 embed 的 attributes 上。

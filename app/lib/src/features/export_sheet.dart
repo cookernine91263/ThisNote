@@ -11,11 +11,28 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../core/format.dart';
+import '../core/i18n.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../state/app_state.dart';
 import '../services/exporter.dart';
 import 'editor/note_image.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。
+/// 导出格式的名称与说明由 [ExportFormat] 自己翻译，这里不再重复。
+const Map<String, String> _en = <String, String>{
+  '此记导出': 'ThisNote export',
+  '此记 · {format}': 'ThisNote · {format}',
+  '已导出 {format}': 'Exported {format}',
+  '导出失败：{e}': 'Export failed: {e}',
+  '此记-{day}': 'ThisNote-{day}',
+  '导出这篇文字': 'Export this piece',
+  '选择一种离开纸面的方式。原稿仍会留在「此记」里。':
+      'Choose how it leaves the page. The original stays in ThisNote.',
+  '正在排版…': 'Laying out…',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
 
 Future<void> showExportSheet(BuildContext context) async {
   final state = context.read<AppState>();
@@ -71,26 +88,31 @@ Future<void> showExportSheet(BuildContext context) async {
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(file.path)],
-          subject: note.title.isEmpty ? '此记导出' : note.title,
-          text: '此记 · ${format.label}',
+          subject: note.title.isEmpty ? _t('此记导出') : note.title,
+          text: _t('此记 · {format}', {'format': format.label}),
         ),
       );
     } else {
       final location = await getSaveLocation(
         suggestedName: '${_safeName(note.title)}.${format.extension}',
         acceptedTypeGroups: [
-          XTypeGroup(label: format.label, extensions: [format.extension]),
+          XTypeGroup(
+            label: format.label,
+            extensions: [format.extension],
+          ),
         ],
       );
       if (location != null) {
         await File(location.path).writeAsBytes(bytes, flush: true);
         if (context.mounted) {
-          showToast(context, '已导出 ${format.label}');
+          showToast(context, _t('已导出 {format}', {'format': format.label}));
         }
       }
     }
   } catch (e) {
-    if (context.mounted) showToast(context, '导出失败：$e');
+    if (context.mounted) {
+      showToast(context, _t('导出失败：{e}', {'e': e}));
+    }
   } finally {
     if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
   }
@@ -98,7 +120,9 @@ Future<void> showExportSheet(BuildContext context) async {
 
 String _safeName(String title) {
   final t = title.trim();
-  final base = t.isEmpty ? '此记-${dayKey(DateTime.now())}' : t;
+  final base = t.isEmpty
+      ? _t('此记-{day}', {'day': dayKey(DateTime.now())})
+      : t;
   return base.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').substring(
         0,
         base.length > 60 ? 60 : base.length,
@@ -132,11 +156,12 @@ class _ExportDialog extends StatelessWidget {
               Row(
                 children: [
                   Text(
-                    '导出这篇文字',
+                    _t('导出这篇文字'),
                     style: TextStyle(
-                      fontFamily: 'WenKai',
-                      fontSize: 24,
-                      letterSpacing: 1,
+                      fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
+                      fontSize: I18n.isEn ? 20 : 24,
+                      fontWeight: I18n.isEn ? FontWeight.w600 : null,
+                      letterSpacing: I18n.isEn ? 0.3 : 1,
                       color: c.ink,
                     ),
                   ),
@@ -150,10 +175,11 @@ class _ExportDialog extends StatelessWidget {
               ),
               const SizedBox(height: 3),
               Text(
-                '选择一种离开纸面的方式。原稿仍会留在「此记」里。',
+                _t('选择一种离开纸面的方式。原稿仍会留在「此记」里。'),
                 style: TextStyle(
                   fontFamily: 'NotoSansSC',
                   fontSize: 10.5,
+                  height: I18n.isEn ? 1.5 : null,
                   color: c.inkMuted,
                 ),
               ),
@@ -280,7 +306,7 @@ class _BusyDialog extends StatelessWidget {
             ),
             const SizedBox(width: 14),
             Text(
-              '正在排版…',
+              _t('正在排版…'),
               style: TextStyle(
                 fontFamily: 'NotoSansSC',
                 fontSize: 12,

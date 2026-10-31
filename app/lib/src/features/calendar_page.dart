@@ -1,16 +1,50 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../core/format.dart';
+import '../core/i18n.dart';
 import '../core/icons.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../data/models.dart';
 import '../state/app_state.dart';
+
+/// 文案以中文为源，英文放在 [_en] 里。
+const Map<String, String> _en = <String, String>{
+  '日历': 'Calendar',
+  '在时间里回看写下的句子': 'Look back at what you wrote, through time',
+  '本月 {n} 篇 · {w} 字': 'This month · {n} · {w}',
+  '上个月': 'Previous month',
+  '下个月': 'Next month',
+  '回到今天': 'Back to today',
+  '在这一天写一篇': 'Write something on this day',
+  '这一天还是空白': 'This day is still blank',
+  '无题': 'Untitled',
+  '{words} 字 · {time}': '{words} · {time}',
+  '那年今日': 'On this day',
+};
+
+String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
+
+/// 数量在英文里要跟着单复数变，中文则把量词留在原文里：
+/// 中文只返回数字，英文返回「3 notes」这样的整体，所以 [_en] 里
+/// 写成 `'本月 {n} 篇 · {w} 字': 'This month · {n} · {w}'` 就够了。
+String _q(int n, String zhUnit, String enOne, [String? enMany]) =>
+    I18n.isEn ? I18n.count(n, zhUnit, enOne, enMany) : '$n';
+
+/// 月日：中文「10 月 31 日」，英文「Oct 31」。
+String _monthDay(DateTime d) =>
+    I18n.isEn ? DateFormat('MMM d').format(d) : '${d.month} 月 ${d.day} 日';
+
+/// 日历表头与周条上的星期缩写。
+List<String> get _weekdayLetters => I18n.isEn
+    ? const ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+    : const ['一', '二', '三', '四', '五', '六', '日'];
 
 class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key, this.mobile = false});
@@ -84,7 +118,7 @@ class _CalendarPageState extends State<CalendarPage> {
         children: [
           Row(
             children: [
-              for (final w in const ['一', '二', '三', '四', '五', '六', '日'])
+              for (final w in _weekdayLetters)
                 Expanded(
                   child: Center(
                     child: Text(
@@ -207,17 +241,18 @@ class _CalendarHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '日历',
+              _t('日历'),
               style: TextStyle(
-                fontFamily: 'WenKai',
-                fontSize: 30,
-                letterSpacing: 2,
+                fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
+                fontSize: I18n.isEn ? 26 : 30,
+                fontWeight: I18n.isEn ? FontWeight.w600 : null,
+                letterSpacing: I18n.isEn ? 0.3 : 2,
                 color: c.ink,
               ),
             ),
             const SizedBox(height: 3),
             Text(
-              '在时间里回看写下的句子',
+              _t('在时间里回看写下的句子'),
               style: TextStyle(
                 fontFamily: 'NotoSansSC',
                 fontSize: 10.5,
@@ -231,7 +266,10 @@ class _CalendarHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              '本月 $monthNotes 篇 · $monthWords 字',
+              _t('本月 {n} 篇 · {w} 字', {
+                'n': _q(monthNotes, '篇', 'note'),
+                'w': _q(monthWords, '字', 'word'),
+              }),
               style: TextStyle(
                 fontFamily: 'NotoSansSC',
                 fontSize: 10,
@@ -244,7 +282,7 @@ class _CalendarHeader extends StatelessWidget {
                 SoftIconButton(
                   icon: LucideIcons.chevronLeft,
                   size: 30,
-                  tooltip: '上个月',
+                  tooltip: _t('上个月'),
                   onPressed: onPrev,
                 ),
                 Padding(
@@ -266,12 +304,12 @@ class _CalendarHeader extends StatelessWidget {
                 SoftIconButton(
                   icon: LucideIcons.chevronRight,
                   size: 30,
-                  tooltip: '下个月',
+                  tooltip: _t('下个月'),
                   onPressed: onNext,
                 ),
                 const SizedBox(width: 6),
                 SoftButton(
-                  label: '回到今天',
+                  label: _t('回到今天'),
                   dense: true,
                   onPressed: onToday,
                 ),
@@ -483,10 +521,11 @@ class _DaySidebar extends StatelessWidget {
           Row(
             children: [
               Text(
-                '${selected.month} 月 ${selected.day} 日',
+                _monthDay(selected),
                 style: TextStyle(
-                  fontFamily: 'WenKai',
+                  fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
                   fontSize: 21,
+                  fontWeight: I18n.isEn ? FontWeight.w600 : null,
                   color: c.ink,
                 ),
               ),
@@ -503,7 +542,7 @@ class _DaySidebar extends StatelessWidget {
               SoftIconButton(
                 icon: LucideIcons.penLine,
                 size: 28,
-                tooltip: '在这一天写一篇',
+                tooltip: _t('在这一天写一篇'),
                 onPressed: onCreate,
               ),
             ],
@@ -518,7 +557,7 @@ class _DaySidebar extends StatelessWidget {
                     InkEmpty(size: 86),
                     const SizedBox(height: 8),
                     Text(
-                      '这一天还是空白',
+                      _t('这一天还是空白'),
                       style: TextStyle(
                         fontFamily: 'NotoSansSC',
                         fontSize: 10.5,
@@ -551,7 +590,7 @@ class _DaySidebar extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                note.title.isEmpty ? '无题' : note.title,
+                                note.title.isEmpty ? _t('无题') : note.title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
@@ -562,7 +601,10 @@ class _DaySidebar extends StatelessWidget {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                '${note.words} 字 · ${timeLabel(note.updatedAt)}',
+                                _t('{words} 字 · {time}', {
+                                  'words': _q(note.words, '字', 'word'),
+                                  'time': timeLabel(note.updatedAt),
+                                }),
                                 style: TextStyle(
                                   fontFamily: 'NotoSansSC',
                                   fontSize: 8.5,
@@ -583,7 +625,7 @@ class _DaySidebar extends StatelessWidget {
             Container(height: 1, color: c.line),
             const SizedBox(height: 10),
             Text(
-              '那年今日',
+              _t('那年今日'),
               style: TextStyle(
                 fontFamily: 'NotoSansSC',
                 fontSize: 9,
@@ -610,7 +652,9 @@ class _DaySidebar extends StatelessWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          entry.value.title.isEmpty ? '无题' : entry.value.title,
+                          entry.value.title.isEmpty
+                              ? _t('无题')
+                              : entry.value.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

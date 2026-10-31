@@ -5,7 +5,20 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:xml/xml.dart';
 
+import '../core/i18n.dart';
 import '../data/models.dart';
+
+/// WebDAV 的错误提示。协议、路径与文件名格式一律不动。
+const _en = <String, String>{
+  '还没有填写 WebDAV 地址': 'No WebDAV address yet',
+  'WebDAV 地址格式不正确': 'The WebDAV address is not valid',
+  '创建目录失败：{code}': 'Could not create the folder: {code}',
+  '无法连接 WebDAV：{error}': 'Could not reach WebDAV: {error}',
+  '上传失败：{error}': 'Upload failed: {error}',
+  '列出备份失败：{error}': 'Could not list backups: {error}',
+  '备份列表无法解析：{error}': 'Could not parse the backup list: {error}',
+  '下载失败：{error}': 'Download failed: {error}',
+};
 
 class WebDavException implements Exception {
   WebDavException(this.message);
@@ -20,9 +33,13 @@ class WebDavService {
 
   Uri get _base {
     final raw = settings.url.trim();
-    if (raw.isEmpty) throw WebDavException('还没有填写 WebDAV 地址');
+    if (raw.isEmpty) {
+      throw WebDavException(tr('还没有填写 WebDAV 地址', null, _en));
+    }
     final uri = Uri.tryParse(raw.endsWith('/') ? raw : '$raw/');
-    if (uri == null || !uri.hasScheme) throw WebDavException('WebDAV 地址格式不正确');
+    if (uri == null || !uri.hasScheme) {
+      throw WebDavException(tr('WebDAV 地址格式不正确', null, _en));
+    }
     return uri;
   }
 
@@ -51,11 +68,13 @@ class WebDavService {
       final response = await request.send().timeout(const Duration(seconds: 15));
       await response.stream.drain<void>();
       if (![200, 201, 204, 301, 405].contains(response.statusCode)) {
-        throw WebDavException('创建目录失败：${response.statusCode}');
+        throw WebDavException(
+          tr('创建目录失败：{code}', {'code': response.statusCode}, _en),
+        );
       }
     } catch (e) {
       if (e is WebDavException) rethrow;
-      throw WebDavException('无法连接 WebDAV：$e');
+      throw WebDavException(tr('无法连接 WebDAV：{error}', {'error': e}, _en));
     }
   }
 
@@ -77,10 +96,12 @@ class WebDavService {
           )
           .timeout(const Duration(seconds: 60));
     } catch (e) {
-      throw WebDavException('上传失败：$e');
+      throw WebDavException(tr('上传失败：{error}', {'error': e}, _en));
     }
     if (![200, 201, 204].contains(response.statusCode)) {
-      throw WebDavException('上传失败：${response.statusCode}');
+      throw WebDavException(
+        tr('上传失败：{error}', {'error': response.statusCode}, _en),
+      );
     }
     return uri.toString();
   }
@@ -102,10 +123,12 @@ class WebDavService {
       final streamed = await request.send().timeout(const Duration(seconds: 20));
       response = await http.Response.fromStream(streamed);
     } catch (e) {
-      throw WebDavException('列出备份失败：$e');
+      throw WebDavException(tr('列出备份失败：{error}', {'error': e}, _en));
     }
     if (response.statusCode != 207 && response.statusCode != 200) {
-      throw WebDavException('列出备份失败：${response.statusCode}');
+      throw WebDavException(
+        tr('列出备份失败：{error}', {'error': response.statusCode}, _en),
+      );
     }
     final result = <RemoteBackup>[];
     try {
@@ -126,7 +149,9 @@ class WebDavService {
         ));
       }
     } catch (e) {
-      throw WebDavException('备份列表无法解析：$e');
+      throw WebDavException(
+        tr('备份列表无法解析：{error}', {'error': e}, _en),
+      );
     }
     result.sort((a, b) => b.name.compareTo(a.name));
     return result;
@@ -138,12 +163,14 @@ class WebDavService {
           .get(Uri.parse(backup.href), headers: _headers)
           .timeout(const Duration(seconds: 90));
       if (response.statusCode != 200) {
-        throw WebDavException('下载失败：${response.statusCode}');
+        throw WebDavException(
+          tr('下载失败：{error}', {'error': response.statusCode}, _en),
+        );
       }
       return response.bodyBytes;
     } catch (e) {
       if (e is WebDavException) rethrow;
-      throw WebDavException('下载失败：$e');
+      throw WebDavException(tr('下载失败：{error}', {'error': e}, _en));
     }
   }
 }

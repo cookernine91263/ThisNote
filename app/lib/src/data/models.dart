@@ -3,6 +3,38 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../core/format.dart';
+import '../core/i18n.dart';
+
+/// 只影响显示文案，枚举的 key / 分数 / id 一律不动，存档格式保持稳定。
+const _kindEn = <String, String>{
+  '日记': 'Diary',
+  '作文': 'Essay',
+  '随笔': 'Note',
+  '写日记': 'Write a diary',
+  '写作文': 'Write an essay',
+  '写随笔': 'Write a note',
+};
+
+const _moodEn = <String, String>{
+  '平静': 'Calm',
+  '愉悦': 'Glad',
+  '充实': 'Full',
+  '疲惫': 'Tired',
+  '低落': 'Low',
+};
+
+const _weatherEn = <String, String>{
+  '晴': 'Sunny',
+  '多云': 'Cloudy',
+  '阴': 'Overcast',
+  '雨': 'Rain',
+  '雪': 'Snow',
+  '风': 'Wind',
+};
+
+const _folderEn = <String, String>{
+  '文件夹': 'Folder',
+};
 
 enum NoteKind { diary, essay, note }
 
@@ -14,15 +46,15 @@ extension NoteKindX on NoteKind {
       };
 
   String get label => switch (this) {
-        NoteKind.diary => '日记',
-        NoteKind.essay => '作文',
-        NoteKind.note => '随笔',
+        NoteKind.diary => tr('日记', null, _kindEn),
+        NoteKind.essay => tr('作文', null, _kindEn),
+        NoteKind.note => tr('随笔', null, _kindEn),
       };
 
   String get verb => switch (this) {
-        NoteKind.diary => '写日记',
-        NoteKind.essay => '写作文',
-        NoteKind.note => '写随笔',
+        NoteKind.diary => tr('写日记', null, _kindEn),
+        NoteKind.essay => tr('写作文', null, _kindEn),
+        NoteKind.note => tr('写随笔', null, _kindEn),
       };
 
   static NoteKind fromKey(String? key) => switch (key) {
@@ -38,11 +70,11 @@ extension MoodX on Mood {
   int get score => index + 1;
 
   String get label => switch (this) {
-        Mood.calm => '平静',
-        Mood.glad => '愉悦',
-        Mood.full => '充实',
-        Mood.tired => '疲惫',
-        Mood.low => '低落',
+        Mood.calm => tr('平静', null, _moodEn),
+        Mood.glad => tr('愉悦', null, _moodEn),
+        Mood.full => tr('充实', null, _moodEn),
+        Mood.tired => tr('疲惫', null, _moodEn),
+        Mood.low => tr('低落', null, _moodEn),
       };
 
   String get emoji => switch (this) {
@@ -73,12 +105,12 @@ extension WeatherX on Weather {
   String get key => name;
 
   String get label => switch (this) {
-        Weather.sunny => '晴',
-        Weather.cloudy => '多云',
-        Weather.overcast => '阴',
-        Weather.rain => '雨',
-        Weather.snow => '雪',
-        Weather.wind => '风',
+        Weather.sunny => tr('晴', null, _weatherEn),
+        Weather.cloudy => tr('多云', null, _weatherEn),
+        Weather.overcast => tr('阴', null, _weatherEn),
+        Weather.rain => tr('雨', null, _weatherEn),
+        Weather.snow => tr('雪', null, _weatherEn),
+        Weather.wind => tr('风', null, _weatherEn),
       };
 
   static Weather? fromKey(String? key) {
@@ -232,7 +264,7 @@ class Folder {
 
   factory Folder.fromJson(Map<String, dynamic> j) => Folder(
         id: j['id'] as String,
-        name: (j['name'] as String?) ?? '文件夹',
+        name: (j['name'] as String?) ?? tr('文件夹', null, _folderEn),
         parentId: j['parentId'] as String?,
         order: (j['order'] as int?) ?? 0,
       );
@@ -470,6 +502,7 @@ class WebDavSettings {
 class AppSettings {
   AppSettings({
     this.themeMode = ThemeMode.light,
+    this.language = 'zh',
     this.accent = 'vermilion',
     this.uiScale = 1.0,
     this.paperTexture = true,
@@ -491,6 +524,9 @@ class AppSettings {
   });
 
   ThemeMode themeMode;
+
+  /// 'zh' 或 'en'。界面语言，首次启动的引导页可以直接选。
+  String language;
   String accent;
   double uiScale;
   bool paperTexture;
@@ -515,6 +551,7 @@ class AppSettings {
 
   Map<String, dynamic> toJson() => {
         'themeMode': themeMode.name,
+        'language': language,
         'accent': accent,
         'uiScale': uiScale,
         'paperTexture': paperTexture,
@@ -541,6 +578,7 @@ class AppSettings {
           'dark' => ThemeMode.dark,
           _ => ThemeMode.light,
         },
+        language: (j['language'] as String?) == 'en' ? 'en' : 'zh',
         accent: (j['accent'] as String?) ?? 'vermilion',
         uiScale: ((j['uiScale'] as num?) ?? 1.0).toDouble(),
         paperTexture: (j['paperTexture'] as bool?) ?? true,

@@ -4,6 +4,13 @@
 /// 代码块、分隔线与空行。图片暂不落地（保留为文字，避免导入后出现坏链接）。
 library;
 
+import '../core/i18n.dart';
+
+/// 导入时的占位标题与相关提示。
+const _en = <String, String>{
+  '导入的笔记': 'Imported note',
+};
+
 class ParsedMarkdown {
   const ParsedMarkdown({
     required this.title,
@@ -25,7 +32,8 @@ final RegExp _inline = RegExp(
   r'\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|\*([^*]+)\*',
 );
 
-ParsedMarkdown parseMarkdown(String source, {String fallbackTitle = '导入的笔记'}) {
+ParsedMarkdown parseMarkdown(String source, {String? fallbackTitle}) {
+  final fallback = fallbackTitle ?? tr('导入的笔记', null, _en);
   final lines = source.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
   final ops = <Map<String, dynamic>>[];
   final codeLines = <String>[];
@@ -147,7 +155,7 @@ ParsedMarkdown parseMarkdown(String source, {String fallbackTitle = '导入的�
       .trim();
 
   return ParsedMarkdown(
-    title: (title == null || title.isEmpty) ? fallbackTitle : title,
+    title: (title == null || title.isEmpty) ? fallback : title,
     delta: ops,
     text: text,
   );
