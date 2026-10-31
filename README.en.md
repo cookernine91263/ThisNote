@@ -105,7 +105,7 @@ The first launch includes a short tour, with a language switch in the corner:
 Already built in this environment:
 
 - `dist/ThisNote-Setup-1.1.0.exe` (Windows x64 installer)
-- `dist/ThisNote-Android-1.1.0.apk` (Android 8.0+, signed)
+- `dist/ThisNote-Android-1.1.0-arm64.apk` (Android 8.0+ arm64, signed)
 - `dist/SHA256SUMS.txt`
 
 See `dist/安装说明.txt` for installation notes.
@@ -181,8 +181,8 @@ storeFile=thisnote-release.jks
 
 ```powershell
 cd app
-flutter build apk --release
-# output: build/app/outputs/flutter-apk/app-release.apk
+flutter build apk --release --target-platform android-arm64
+# output: build/app/outputs/flutter-apk/app-release.apk (arm64)
 ```
 
 ### Tests

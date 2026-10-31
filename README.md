@@ -106,7 +106,7 @@
 当前环境已生成：
 
 - `dist/ThisNote-Setup-1.1.0.exe`（Windows x64 安装包）
-- `dist/ThisNote-Android-1.1.0.apk`（Android 8.0+，已签名）
+- `dist/ThisNote-Android-1.1.0-arm64.apk`（Android 8.0+ arm64，已签名）
 - `dist/SHA256SUMS.txt`
 
 安装说明见 `dist/安装说明.txt`。
@@ -182,8 +182,8 @@ storeFile=thisnote-release.jks
 
 ```powershell
 cd app
-flutter build apk --release
-# 产物：build/app/outputs/flutter-apk/app-release.apk
+flutter build apk --release --target-platform android-arm64
+# 产物：build/app/outputs/flutter-apk/app-release.apk（arm64）
 ```
 
 ### 测试
