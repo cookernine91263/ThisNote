@@ -163,16 +163,21 @@ Future<void> _runAction(
     return;
   }
 
+  final partial = ValueNotifier<String>('');
+  final service = AiService(state.settings.aiSettings);
   showDialog<void>(
     context: context,
     barrierDismissible: false,
     barrierColor: Colors.black.withValues(alpha: 0.2),
-    builder: (context) => _AiBusy(action: action),
+    builder: (_) => _AiStreaming(
+      action: action,
+      partial: partial,
+      onCancel: service.cancel,
+    ),
   );
   String? result;
   String? error;
   try {
-    final service = AiService(state.settings.aiSettings);
     final user = StringBuffer();
     if (session.note.title.trim().isNotEmpty) {
       user.writeln('标题：${session.note.title.trim()}');
@@ -180,9 +185,10 @@ Future<void> _runAction(
     user.writeln('类型：${session.note.kind.label}');
     user.writeln();
     user.writeln(contextText);
-    result = await service.complete(
+    result = await service.completeStream(
       system: action.systemPrompt,
       user: user.toString(),
+      onDelta: (text) => partial.value = text,
     );
   } catch (e) {
     error = e.toString();
@@ -190,6 +196,10 @@ Future<void> _runAction(
   if (!context.mounted) return;
   Navigator.of(context, rootNavigator: true).pop();
 
+  if (service.cancelled) {
+    showToast(context, '已停止生成', icon: LucideIcons.circleStop);
+    return;
+  }
   if (error != null) {
     showToast(context, error, icon: LucideIcons.alertCircle);
     return;
@@ -374,77 +384,141 @@ class _AiMenuDialog extends StatelessWidget {
   }
 }
 
-class _AiBusy extends StatefulWidget {
-  const _AiBusy({required this.action});
+class _AiStreaming extends StatefulWidget {
+  const _AiStreaming({
+    required this.action,
+    required this.partial,
+    required this.onCancel,
+  });
+
   final AiAction action;
+  final ValueNotifier<String> partial;
+  final VoidCallback onCancel;
 
   @override
-  State<_AiBusy> createState() => _AiBusyState();
+  State<_AiStreaming> createState() => _AiStreamingState();
 }
 
-class _AiBusyState extends State<_AiBusy>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1600),
-  )..repeat();
+class _AiStreamingState extends State<_AiStreaming> {
+  final ScrollController _scroll = ScrollController();
+  bool _stopping = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.partial.addListener(_follow);
+  }
 
   @override
   void dispose() {
-    _c.dispose();
+    widget.partial.removeListener(_follow);
+    _scroll.dispose();
     super.dispose();
+  }
+
+  void _follow() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      _scroll.jumpTo(_scroll.position.maxScrollExtent);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     return Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      child: Container(
-        width: 250,
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-        decoration: BoxDecoration(
-          color: c.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: c.line),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedBuilder(
-              animation: _c,
-              builder: (context, _) => Transform.rotate(
-                angle: _c.value * 6.283,
-                child: Icon(LucideIcons.sparkles, size: 22, color: c.accent),
+      backgroundColor: c.surface,
+      insetPadding: const EdgeInsets.all(24),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: c.line),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 460),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(LucideIcons.sparkles, size: 15, color: c.accent),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${widget.action.label}…',
+                    style: TextStyle(
+                      fontFamily: 'WenKai',
+                      fontSize: 19,
+                      letterSpacing: 0.5,
+                      color: c.ink,
+                    ),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: _stopping
+                        ? null
+                        : () {
+                            setState(() => _stopping = true);
+                            widget.onCancel();
+                          },
+                    child: Text(
+                      _stopping ? '正在停止…' : '停止',
+                      style: TextStyle(
+                        fontFamily: 'NotoSansSC',
+                        fontSize: 11.5,
+                        color: _stopping ? c.inkMuted : c.accent,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '${widget.action.label}…',
-              style: TextStyle(
-                fontFamily: 'NotoSansSC',
-                fontSize: 12,
-                color: c.inkSoft,
+              Divider(height: 14, color: c.line),
+              Flexible(
+                child: SingleChildScrollView(
+                  controller: _scroll,
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: widget.partial,
+                    builder: (context, text, _) {
+                      if (text.isEmpty) {
+                        return Text(
+                          '正在思考…',
+                          style: TextStyle(
+                            fontFamily: 'NotoSansSC',
+                            fontSize: 12,
+                            color: c.inkMuted,
+                          ),
+                        );
+                      }
+                      return SelectableText(
+                        text,
+                        style: TextStyle(
+                          fontFamily: 'NotoSansSC',
+                          fontSize: 13,
+                          height: 1.8,
+                          color: c.ink,
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '正在读你写下的字',
-              style: TextStyle(
-                fontFamily: 'NotoSansSC',
-                fontSize: 9,
-                color: c.inkMuted,
+              const SizedBox(height: 10),
+              Text(
+                '生成时可以先读；完成后会请你预览，确认后才写进正文。',
+                style: TextStyle(
+                  fontFamily: 'NotoSansSC',
+                  fontSize: 9.5,
+                  color: c.inkMuted,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
-}
-
-class _AiResultDialog extends StatelessWidget {
+}class _AiResultDialog extends StatelessWidget {
   const _AiResultDialog({
     required this.action,
     required this.result,

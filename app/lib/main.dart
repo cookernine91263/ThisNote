@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'src/app.dart';
+import 'src/data/repository.dart';
 import 'src/state/app_state.dart';
 
 Future<void> main() async {
@@ -20,18 +21,24 @@ Future<void> main() async {
     );
   }
   if (Platform.isWindows) {
+    if (!await NoteStore.acquireProcessLock()) {
+      // 已经有一个「此记」在跑了。静默退出，避免两边同时写同一批文件。
+      exit(0);
+    }
     await windowManager.ensureInitialized();
     const options = WindowOptions(
       size: Size(1400, 900),
       minimumSize: Size(1020, 680),
       center: true,
-      title: '姝よ 路 ThisNote',
+      title: '此记 · ThisNote',
       titleBarStyle: TitleBarStyle.hidden,
       backgroundColor: Color(0xFFF4EFE4),
     );
+    // 关闭前先落盘：交给 AppShell.onWindowClose 处理，处理完再 destroy。
+    await windowManager.setPreventClose(true);
     windowManager.waitUntilReadyToShow(options, () async {
       await windowManager.show();
-            await windowManager.focus();
+      await windowManager.focus();
     });
   }
 
@@ -48,4 +55,3 @@ Future<void> main() async {
     ),
   );
 }
-

@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../core/format.dart';
+import '../data/activity.dart';
 import '../data/models.dart';
 import '../data/templates.dart';
 
@@ -23,16 +24,46 @@ class NoteStore {
 
   String get dataPath => root.path;
 
+  /// Windows 上的默认数据目录。启动早期（还没 init）也要用，所以保持同步。
+  static Directory defaultRootDirectory() {
+    final appData = Platform.environment['APPDATA'] ??
+        Platform.environment['LOCALAPPDATA'] ??
+        Directory.current.path;
+    return Directory(p.join(appData, 'ThisNote', 'data'));
+  }
+
+  /// 同一个数据目录只允许一个进程写。双开会让两份内存状态互相覆盖，
+  /// 这不是防抖或原子写能兜住的问题。
+  static RandomAccessFile? _processLock;
+
+  static Future<bool> acquireProcessLock() async {
+    if (!Platform.isWindows) return true;
+    if (_processLock != null) return true;
+    try {
+      final root = defaultRootDirectory();
+      if (!await root.exists()) await root.create(recursive: true);
+      final handle = await File(p.join(root.path, '.instance.lock'))
+          .open(mode: FileMode.write);
+      try {
+        handle.lockSync(FileLock.exclusive);
+      } catch (_) {
+        await handle.close();
+        return false;
+      }
+      _processLock = handle;
+      return true;
+    } catch (_) {
+      // 锁文件本身出问题时不要拦着用户写字。
+      return true;
+    }
+  }
+
   Future<void> init() async {
     if (_initialized) return;
     if (rootOverride != null) {
       root = Directory(rootOverride!);
     } else if (Platform.isWindows) {
-      final appData = Platform.environment['APPDATA'];
-      final base = appData == null || appData.isEmpty
-          ? (await getApplicationSupportDirectory()).path
-          : appData;
-      root = Directory(p.join(base, 'ThisNote', 'data'));
+      root = defaultRootDirectory();
     } else {
       final base = await getApplicationSupportDirectory();
       root = Directory(p.join(base.path, 'ThisNote'));
@@ -49,13 +80,28 @@ class NoteStore {
   File get _libraryFile => File(p.join(root.path, 'library.json'));
   File get _settingsFile => File(p.join(root.path, 'settings.json'));
   File get _foldersFile => File(p.join(root.path, 'folders.json'));
+  File get _activityFile => File(p.join(root.path, 'activity.json'));
+
+  /// 先读正文，读不出来再退到上一次写入留下的 .bak。
+  Future<String?> _readWithBackup(File file) async {
+    for (final f in [file, File('${file.path}.bak')]) {
+      try {
+        if (!await f.exists()) continue;
+        final raw = await f.readAsString();
+        if (raw.trim().isNotEmpty) return raw;
+      } catch (_) {
+        // 损坏就试下一个
+      }
+    }
+    return null;
+  }
 
   File _noteFile(String id) => File(p.join(notesDir.path, '$id.json'));
 
   Future<List<NoteMeta>> loadLibrary() async {
-    if (await _libraryFile.exists()) {
+    final raw = await _readWithBackup(_libraryFile);
+    if (raw != null) {
       try {
-        final raw = await _libraryFile.readAsString();
         final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
         final metas = list.map(NoteMeta.fromJson).toList();
         if (metas.isNotEmpty) return _sorted(metas);
@@ -95,9 +141,9 @@ class NoteStore {
   }
 
   Future<List<Folder>> loadFolders() async {
-    if (!await _foldersFile.exists()) return [];
+    final raw = await _readWithBackup(_foldersFile);
+    if (raw == null) return [];
     try {
-      final raw = await _foldersFile.readAsString();
       final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
       return list.map(Folder.fromJson).toList();
     } catch (_) {
@@ -113,14 +159,19 @@ class NoteStore {
   }
 
   Future<Note?> loadNote(String id) async {
-    final f = _noteFile(id);
-    if (!await f.exists()) return null;
-    try {
-      final j = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
-      return Note.fromJson(j);
-    } catch (_) {
-      return null;
+    // 主文件可能是写到一半断电留下的半截 JSON，这种情况也要退到 .bak。
+    final file = _noteFile(id);
+    for (final candidate in [file, File('${file.path}.bak')]) {
+      try {
+        if (!await candidate.exists()) continue;
+        final raw = await candidate.readAsString();
+        if (raw.trim().isEmpty) continue;
+        return Note.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      } catch (_) {
+        // 换下一个候选
+      }
     }
+    return null;
   }
 
   Future<void> saveNote(Note note) async {
@@ -128,8 +179,10 @@ class NoteStore {
   }
 
   Future<void> deleteNoteFile(String id) async {
-    final f = _noteFile(id);
-    if (await f.exists()) await f.delete();
+    for (final path in [_noteFile(id).path, '${_noteFile(id).path}.bak']) {
+      final f = File(path);
+      if (await f.exists()) await f.delete();
+    }
     final h = Directory(p.join(historyDir.path, id));
     if (await h.exists()) await h.delete(recursive: true);
   }
@@ -194,12 +247,21 @@ class NoteStore {
   }
 
   Future<AppSettings> loadSettings() async {
-    if (!await _settingsFile.exists()) return AppSettings();
+    final raw = await _readWithBackup(_settingsFile);
+    if (raw == null) return AppSettings();
     try {
-      return AppSettings.fromJsonString(await _settingsFile.readAsString());
+      return AppSettings.fromJsonString(raw);
     } catch (_) {
       return AppSettings();
     }
+  }
+
+  Future<ActivityLog> loadActivity() async {
+    return ActivityLog.decode(await _readWithBackup(_activityFile));
+  }
+
+  Future<void> saveActivity(ActivityLog log) async {
+    await _writeAtomic(_activityFile, log.encode());
   }
 
   Future<void> saveSettings(AppSettings settings) async {
@@ -253,6 +315,10 @@ class NoteStore {
       final data = await _foldersFile.readAsBytes();
       archive.addFile(ArchiveFile('folders.json', data.length, data));
     }
+    if (await _activityFile.exists()) {
+      final data = await _activityFile.readAsBytes();
+      archive.addFile(ArchiveFile('activity.json', data.length, data));
+    }
     final bytes = ZipEncoder().encode(archive);
     final name = 'ThisNote-backup-${DateTime.now().millisecondsSinceEpoch}.zip';
     final out = File(p.join(root.path, name));
@@ -271,7 +337,8 @@ class NoteStore {
       final name = file.name.replaceAll('\\', '/');
       if (name == 'library.json' ||
           name == 'settings.json' ||
-          name == 'folders.json') {
+          name == 'folders.json' ||
+          name == 'activity.json') {
         final out = File(p.join(root.path, name));
         await out.writeAsBytes(file.content as List<int>, flush: true);
         count++;
@@ -291,6 +358,10 @@ class NoteStore {
     final tmp = File('${file.path}.tmp');
     await tmp.writeAsString(content, flush: true);
     if (await file.exists()) {
+      // 先把旧文件留成 .bak：删旧名和改名之间若断电，还能从 .bak 读回上一版。
+      try {
+        await file.copy('${file.path}.bak');
+      } catch (_) {}
       try {
         await file.delete();
       } catch (_) {}

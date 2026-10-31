@@ -1,4 +1,4 @@
-#define MyAppName "此记 ThisNote"
+﻿#define MyAppName "此记 ThisNote"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "ThisNote"
 #define MyAppExeName "ThisNote.exe"

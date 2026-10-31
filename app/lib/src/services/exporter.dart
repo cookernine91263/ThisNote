@@ -90,7 +90,7 @@ class NoteExporter {
         }
         for (final run in block.runs.where((r) => r.isImage)) {
           final img = imageParts[run.imageIndex!];
-          document.write(_imageXml(img));
+          document.write(_imageXml(img, run.attrs));
         }
         continue;
       }
@@ -157,7 +157,7 @@ class NoteExporter {
       for (final run in block.runs) {
         if (run.isImage) {
           final img = imageParts[run.imageIndex!];
-          document.write(_imageXml(img));
+          document.write(_imageXml(img, run.attrs));
           continue;
         }
         final rPr = _runProps(run.attrs, header: header, code: code, quote: quote);
@@ -275,13 +275,22 @@ class NoteExporter {
       if (block.runs.any((r) => r.isImage)) {
         for (final run in block.runs.where((r) => r.isImage)) {
           final img = parser.images[run.imageIndex!];
+          final factor = _imageFactor(run.attrs);
+          final alignment = switch (_imageAlign(run.attrs)) {
+            'center' => pw.Alignment.center,
+            'right' => pw.Alignment.centerRight,
+            _ => pw.Alignment.centerLeft,
+          };
           widgets.add(
             pw.Container(
               margin: const pw.EdgeInsets.symmetric(vertical: 8),
-              child: pw.Image(
-                pw.MemoryImage(img.bytes),
-                width: 430,
-                fit: pw.BoxFit.contain,
+              child: pw.Align(
+                alignment: alignment,
+                child: pw.Image(
+                  pw.MemoryImage(img.bytes),
+                  width: 430 * factor,
+                  fit: pw.BoxFit.contain,
+                ),
               ),
             ),
           );
@@ -760,8 +769,9 @@ class NoteExporter {
     return b.toString();
   }
 
-  String _imageXml(_ImagePart img) {
-    const maxEmu = 5486400;
+  String _imageXml(_ImagePart img, Map<String, dynamic> attrs) {
+    final factor = _imageFactor(attrs);
+    final maxEmu = (5486400 * factor).round();
     const maxHeightEmu = 6858000;
     var cx = img.width * 9525;
     var cy = img.height * 9525;
@@ -775,7 +785,12 @@ class NoteExporter {
       cy = maxHeightEmu;
       cx = (cx * ratio).round();
     }
-    return '<w:p><w:pPr><w:spacing w:before="120" w:after="180"/></w:pPr><w:r><w:drawing>'
+    final jc = switch (_imageAlign(attrs)) {
+      'center' => '<w:jc w:val="center"/>',
+      'right' => '<w:jc w:val="right"/>',
+      _ => '',
+    };
+    return '<w:p><w:pPr>$jc<w:spacing w:before="120" w:after="180"/></w:pPr><w:r><w:drawing>'
         '<wp:inline distT="0" distB="0" distL="0" distR="0">'
         '<wp:extent cx="$cx" cy="$cy"/><wp:docPr id="${img.index}" name="${img.fileName}"/>'
         '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
@@ -875,9 +890,20 @@ class NoteExporter {
       '<Application>此记 · ThisNote</Application></Properties>';
 }
 
+/// 图片宽度（相对正文宽度）与对齐，写在 embed 的 attributes 上。
+double _imageFactor(Map<String, dynamic> attrs) {
+  final raw = attrs['imageWidth']?.toString();
+  final value = double.tryParse(raw ?? '') ?? 1;
+  return value.clamp(0.2, 1.0);
+}
+
+String _imageAlign(Map<String, dynamic> attrs) {
+  final raw = attrs['imageAlign']?.toString();
+  return raw == 'center' || raw == 'right' ? raw! : 'left';
+}
+
 class _Run {
-  _Run(
-    this.text, {
+  _Run(    this.text, {
     this.attrs = const {},
     this.isImage = false,
     this.imagePath,
@@ -986,6 +1012,7 @@ class _DeltaParser {
             ));
             runs.add(_Run(
               '',
+              attrs: attrs,
               isImage: true,
               imagePath: path,
               imageIndex: images.length - 1,
@@ -1008,7 +1035,12 @@ class _DeltaParser {
       final attrs = (raw['attributes'] as Map?)?.cast<String, dynamic>() ?? const {};
       if (insert is! String) {
         if (insert is Map && insert['image'] is String) {
-          runs.add(_Run('', isImage: true, imagePath: insert['image'] as String));
+          runs.add(_Run(
+            '',
+            attrs: attrs,
+            isImage: true,
+            imagePath: insert['image'] as String,
+          ));
         } else if (insert is Map && insert['divider'] != null) {
           blocks.add(_Block(runs: const [], attrs: const {}, isDivider: true));
         }

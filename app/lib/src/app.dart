@@ -19,7 +19,8 @@ class ThisNoteApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final settings = state.settings;
-    const scale = 1.0;
+    // 界面字号只走 textScaler，主题里的字号保持 1.0，避免双重放大。
+    final scale = settings.uiScale.clamp(0.9, 1.15);
     return ValueListenableBuilder<bool>(
       valueListenable: ThemeReveal.revealing,
       builder: (context, revealing, _) => RepaintBoundary(
@@ -29,12 +30,12 @@ class ThisNoteApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           theme: AppTheme.build(
             Brightness.light,
-            scale,
+            1.0,
             accent: settings.accent,
           ),
           darkTheme: AppTheme.build(
             Brightness.dark,
-            scale,
+            1.0,
             accent: settings.accent,
           ),
           themeMode: settings.themeMode,

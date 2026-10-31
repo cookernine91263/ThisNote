@@ -7,14 +7,18 @@ DefaultStyles buildQuillStyles(
   AppPalette c, {
   required double scale,
   required double lineHeight,
+  double paragraphGap = 0,
+  double letterSpacing = 0.15,
 }) {
   final bodySize = 17.0 * scale;
+  final gap = paragraphGap.clamp(0.0, 40.0);
+  final paragraphSpacing = VerticalSpacing(2 + gap / 2, 2 + gap / 2);
   final body = TextStyle(
     fontFamily: 'NotoSansSC',
     fontSize: bodySize,
     height: lineHeight,
     color: c.ink,
-    letterSpacing: 0.15,
+    letterSpacing: letterSpacing,
   );
 
   DefaultTextBlockStyle block(
@@ -26,7 +30,7 @@ DefaultStyles buildQuillStyles(
       DefaultTextBlockStyle(
         style,
         horizontal ?? const HorizontalSpacing(0, 0),
-        vertical ?? const VerticalSpacing(2, 2),
+        vertical ?? paragraphSpacing,
         VerticalSpacing.zero,
         decoration,
       );
@@ -76,7 +80,7 @@ DefaultStyles buildQuillStyles(
     quote: block(
       body.copyWith(color: c.inkSoft),
       horizontal: const HorizontalSpacing(16, 12),
-      vertical: const VerticalSpacing(8, 8),
+      vertical: VerticalSpacing(8 + gap / 2, 8 + gap / 2),
       decoration: BoxDecoration(
         color: c.accentSoft.withValues(alpha: c.isDark ? 0.35 : 0.32),
         border: Border(
@@ -93,7 +97,7 @@ DefaultStyles buildQuillStyles(
         color: c.inkSoft,
       ),
       horizontal: const HorizontalSpacing(14, 12),
-      vertical: const VerticalSpacing(10, 10),
+      vertical: VerticalSpacing(10 + gap / 2, 10 + gap / 2),
       decoration: BoxDecoration(
         color: c.surfaceAlt,
         borderRadius: BorderRadius.circular(6),
@@ -103,7 +107,7 @@ DefaultStyles buildQuillStyles(
     lists: DefaultListBlockStyle(
       body,
       const HorizontalSpacing(0, 0),
-      const VerticalSpacing(2, 2),
+      paragraphSpacing,
       VerticalSpacing.zero,
       null,
       null,

@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import '../core/format.dart';
 import '../core/icons.dart';
 import '../core/motion.dart';
-import '../core/trash_fly.dart';
 import '../core/theme.dart';
 import '../core/ui.dart';
 import '../data/models.dart';
@@ -25,6 +24,7 @@ class NoteListPanel extends StatefulWidget {
 
 class _NoteListPanelState extends State<NoteListPanel> {
   bool _searching = false;
+  String? _removingId;
   final TextEditingController _searchCtrl = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
 
@@ -33,6 +33,27 @@ class _NoteListPanelState extends State<NoteListPanel> {
     _searchCtrl.dispose();
     _searchFocus.dispose();
     super.dispose();
+  }
+
+  /// 删除不弹确认框、不飞卡片：先让行快速收起来，再真正删除，
+  /// 最后用「撤销」兜住误触。
+  void _requestTrash(NoteMeta meta) {
+    if (_removingId != null) return;
+    setState(() => _removingId = meta.id);
+  }
+
+  Future<void> _finishTrash(NoteMeta meta) async {
+    if (!mounted) return;
+    final state = context.read<AppState>();
+    setState(() => _removingId = null);
+    await state.trashNote(meta.id);
+    if (!mounted) return;
+    showToast(
+      context,
+      '已移到回收站',
+      actionLabel: '撤销',
+      onAction: () => state.restoreNote(meta.id),
+    );
   }
 
   void _toggleSearch() {
@@ -282,7 +303,7 @@ class _NoteListPanelState extends State<NoteListPanel> {
         Expanded(
           child: AnimatedSwitcher(
             key: ValueKey(
-              'list-${state.view}-${state.sort}-${state.folderFilter}-${state.tagFilter}',
+              'list-${state.view}-${state.folderFilter}-${state.tagFilter}',
             ),
             duration: const Duration(milliseconds: 250),
             switchInCurve: Curves.easeOutCubic,
@@ -290,7 +311,7 @@ class _NoteListPanelState extends State<NoteListPanel> {
               return ClipRect(
                 child: Stack(
                   fit: StackFit.expand,
-                  children: [...previous, if (current != null) current],
+                  children: [...previous, ?current],
                 ),
               );
             },
@@ -312,7 +333,7 @@ class _NoteListPanelState extends State<NoteListPanel> {
             },
             child: KeyedSubtree(
               key: ValueKey(
-                'list-inner-${state.view}-${state.sort}-${state.folderFilter}-${state.tagFilter}',
+                'list-inner-${state.view}-${state.folderFilter}-${state.tagFilter}',
               ),
               child: list.isEmpty
                   ? _empty(context, state)
@@ -337,10 +358,29 @@ class _NoteListPanelState extends State<NoteListPanel> {
                             );
                           }
                           final note = item as NoteMeta;
-                          return NoteCard(
-                            meta: note,
-                            selected: state.current?.id == note.id,
-                            view: state.view,
+                          final removing = _removingId == note.id;
+                          return TweenAnimationBuilder<double>(
+                            key: ValueKey('row-${note.id}'),
+                            tween: Tween<double>(
+                              begin: 1,
+                              end: removing ? 0 : 1,
+                            ),
+                            duration: const Duration(milliseconds: 190),
+                            curve: Curves.easeInCubic,
+                            onEnd: removing ? () => _finishTrash(note) : null,
+                            builder: (context, t, child) => ClipRect(
+                              child: Align(
+                                alignment: Alignment.topCenter,
+                                heightFactor: t,
+                                child: Opacity(opacity: t, child: child),
+                              ),
+                            ),
+                            child: NoteCard(
+                              meta: note,
+                              selected: state.current?.id == note.id,
+                              view: state.view,
+                              onRequestTrash: _requestTrash,
+                            ),
                           );
                         },
                       ),
@@ -523,237 +563,288 @@ class _GroupHeader {
   final String label;
 }
 
-class NoteCard extends StatelessWidget {
+/// 长按整张卡片即可拖动排序；拖到另一张卡片的上半/下半，
+/// 会出现一条插入线。跨日期不参与排序，拖进文件夹仍走原来的通道。
+class NoteCard extends StatefulWidget {
   const NoteCard({
     required this.meta,
     required this.selected,
     required this.view,
+    this.onRequestTrash,
     super.key,
   });
 
   final NoteMeta meta;
   final bool selected;
   final String view;
+  final ValueChanged<NoteMeta>? onRequestTrash;
+
+  @override
+  State<NoteCard> createState() => _NoteCardState();
+}
+
+class _NoteCardState extends State<NoteCard> {
+  final GlobalKey _cardKey = GlobalKey();
+  bool _hoverBefore = false;
+  bool _hoverAfter = false;
+
+  NoteMeta get meta => widget.meta;
+
+  /// 只接受同一天的另一张卡片：列表是按日期分组的，
+  /// 跨组插入会让日期分组失去意义。
+  bool _accepts(String data) {
+    if (!data.startsWith('note:')) return false;
+    final id = data.substring(5);
+    if (id == meta.id) return false;
+    final state = context.read<AppState>();
+    final index = state.notes.indexWhere((n) => n.id == id);
+    if (index < 0) return false;
+    final source = state.notes[index];
+    return !source.isTrashed && source.day == meta.day;
+  }
+
+  void _updateHover(Offset globalPosition) {
+    final box = _cardKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final after = box.globalToLocal(globalPosition).dy > box.size.height / 2;
+    if (after == _hoverAfter && !after == _hoverBefore) return;
+    setState(() {
+      _hoverAfter = after;
+      _hoverBefore = !after;
+    });
+  }
+
+  void _clearHover() {
+    if (!_hoverBefore && !_hoverAfter) return;
+    setState(() {
+      _hoverBefore = false;
+      _hoverAfter = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     final state = context.read<AppState>();
     final mood = MoodX.fromScore(meta.mood);
-    return DragTarget<String>(
-      onWillAcceptWithDetails: (details) =>
-          details.data.startsWith('note:') && details.data != 'note:${meta.id}',
-      onAcceptWithDetails: (details) async {
-        if (details.data.startsWith('note:')) {
-          await state.reorderNote(details.data.substring(5), meta.id);
-        }
-      },
-      builder: (context, candidate, rejected) {
-        final hot = candidate.isNotEmpty;
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 4),
-          child: HoverBuilder(
-            builder: (context, hovered, t) {
-              final bg = selected
-                  ? c.accentSoft
-                  : hovered
+    final hot = _hoverBefore || _hoverAfter;
+
+    final card = Padding(
+      key: _cardKey,
+      padding: const EdgeInsets.only(bottom: 4),
+      child: HoverBuilder(
+        builder: (context, hovered, t) {
+          final bg = widget.selected
+              ? c.accentSoft
+              : hovered
                   ? c.paper
                   : Colors.transparent;
-              return GestureDetector(
-                onTap: () {
-                  if (view == 'trash') {
-                    _showTrashPreview(context, state, meta);
-                  } else {
-                    state.openNote(meta.id);
-                  }
-                },
-                onSecondaryTapDown: (details) => _showContextMenu(
-                  context,
-                  state,
-                  meta,
-                  details.globalPosition,
-                ),
-                child: AnimatedContainer(
-                  duration: Motion.fast,
-                  curve: Motion.enter,
-                  padding: const EdgeInsets.fromLTRB(12, 11, 10, 10),
-                  decoration: BoxDecoration(
-                    color: bg,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: hot
-                          ? c.accent.withValues(alpha: 0.55)
-                          : selected
+          return GestureDetector(
+            onTap: () {
+              if (widget.view == 'trash') {
+                _showTrashPreview(context, state, meta);
+              } else {
+                state.openNote(meta.id);
+              }
+            },
+            onSecondaryTapDown: (details) => _showContextMenu(
+              context,
+              state,
+              meta,
+              details.globalPosition,
+            ),
+            child: AnimatedContainer(
+              duration: Motion.fast,
+              curve: Motion.enter,
+              padding: const EdgeInsets.fromLTRB(12, 11, 10, 10),
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: hot
+                      ? c.accent.withValues(alpha: 0.55)
+                      : widget.selected
                           ? c.accent.withValues(alpha: 0.25)
                           : hovered
-                          ? c.line
-                          : Colors.transparent,
-                    ),
-                  ),
-                  child: Column(
+                              ? c.line
+                              : Colors.transparent,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (meta.pinned)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 3, right: 5),
-                              child: Icon(
-                                LucideIcons.pin,
-                                size: 11,
-                                color: c.accent,
-                              ),
-                            ),
-                          Expanded(
-                            child: Text(
-                              meta.title.trim().isEmpty
-                                  ? '无题'
-                                  : meta.title.trim(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontFamily: 'NotoSansSC',
-                                fontSize: 13.5,
-                                fontWeight: selected
-                                    ? FontWeight.w600
-                                    : FontWeight.w500,
-                                color: c.ink,
-                                height: 1.35,
-                              ),
-                            ),
+                      if (meta.pinned)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 3, right: 5),
+                          child: Icon(
+                            LucideIcons.pin,
+                            size: 11,
+                            color: c.accent,
                           ),
-                          if (hovered || selected)
-                            GestureDetector(
-                              onTapDown: (d) => _showContextMenu(
-                                context,
-                                state,
-                                meta,
-                                d.globalPosition,
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.only(left: 4, top: 1),
-                                child: Icon(
-                                  LucideIcons.ellipsis,
-                                  size: 15,
-                                  color: c.inkMuted,
-                                ),
-                              ),
-                            ),
-                          if (view != 'trash')
-                            Draggable<String>(
-                              data: 'note:${meta.id}',
-                              feedback: Material(
-                                color: Colors.transparent,
-                                child: _NoteGhost(meta: meta),
-                              ),
-                              childWhenDragging: Opacity(
-                                opacity: 0.35,
-                                child: Icon(
-                                  LucideIcons.gripVertical,
-                                  size: 14,
-                                  color: c.inkMuted,
-                                ),
-                              ),
-                              child: Tooltip(
-                                message: '拖动排序 / 拖进文件夹',
-                                child: MouseRegion(
-                                  cursor: SystemMouseCursors.grab,
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(
-                                      left: 3,
-                                      top: 1,
-                                    ),
-                                    child: Icon(
-                                      LucideIcons.gripVertical,
-                                      size: 14,
-                                      color: hot ? c.accent : c.inkMuted,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        meta.excerpt.isEmpty ? '还没有写下正文' : meta.excerpt,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontFamily: 'NotoSansSC',
-                          fontSize: 11.5,
-                          height: 1.6,
-                          color: meta.excerpt.isEmpty ? c.inkMuted : c.inkSoft,
+                        ),
+                      Expanded(
+                        child: Text(
+                          meta.title.trim().isEmpty
+                              ? '无题'
+                              : meta.title.trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontFamily: 'NotoSansSC',
+                            fontSize: 13.5,
+                            fontWeight: widget.selected
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                            color: c.ink,
+                            height: 1.35,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 7),
-                      Row(
-                        children: [
-                          Icon(
-                            kindIcon(meta.kind),
-                            size: 10,
-                            color: c.inkMuted,
+                      if (hovered || widget.selected)
+                        GestureDetector(
+                          onTapDown: (d) => _showContextMenu(
+                            context,
+                            state,
+                            meta,
+                            d.globalPosition,
                           ),
-                          const SizedBox(width: 4),
-                          Text(
-                            shortDate(meta.createdAt),
-                            style: TextStyle(
-                              fontFamily: 'NotoSansSC',
-                              fontSize: 9.5,
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 4, top: 1),
+                            child: Icon(
+                              LucideIcons.ellipsis,
+                              size: 15,
                               color: c.inkMuted,
                             ),
                           ),
-                          const SizedBox(width: 7),
-                          Dot(size: 2, color: c.lineStrong),
-                          const SizedBox(width: 7),
-                          Text(
-                            '${meta.words} 字',
-                            style: TextStyle(
-                              fontFamily: 'NotoSansSC',
-                              fontSize: 9.5,
-                              color: c.inkMuted,
-                            ),
-                          ),
-                          if (mood != null) ...[
-                            const SizedBox(width: 7),
-                            Text(
-                              mood.emoji,
-                              style: TextStyle(
-                                fontFamily: 'NotoSansSC',
-                                fontSize: 10,
-                                color: mood.color,
-                              ),
-                            ),
-                          ],
-                          const Spacer(),
-                          if (meta.favorite)
-                            Icon(LucideIcons.heart, size: 10, color: c.accent),
-                          if (meta.tags.isNotEmpty) ...[
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                meta.tags.take(2).map((e) => '#$e').join(' '),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontFamily: 'NotoSansSC',
-                                  fontSize: 9,
-                                  color: c.inkMuted,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
+                        ),
                     ],
                   ),
-                ),
-              );
-            },
-          ),
-        );
+                  const SizedBox(height: 4),
+                  Text(
+                    meta.excerpt.isEmpty ? '还没有写下正文' : meta.excerpt,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: 'NotoSansSC',
+                      fontSize: 11.5,
+                      height: 1.6,
+                      color: meta.excerpt.isEmpty ? c.inkMuted : c.inkSoft,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Row(
+                    children: [
+                      Icon(
+                        kindIcon(meta.kind),
+                        size: 10,
+                        color: c.inkMuted,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        shortDate(meta.createdAt),
+                        style: TextStyle(
+                          fontFamily: 'NotoSansSC',
+                          fontSize: 9.5,
+                          color: c.inkMuted,
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      Dot(size: 2, color: c.lineStrong),
+                      const SizedBox(width: 7),
+                      Text(
+                        '${meta.words} 字',
+                        style: TextStyle(
+                          fontFamily: 'NotoSansSC',
+                          fontSize: 9.5,
+                          color: c.inkMuted,
+                        ),
+                      ),
+                      if (mood != null) ...[
+                        const SizedBox(width: 7),
+                        Text(
+                          mood.emoji,
+                          style: TextStyle(
+                            fontFamily: 'NotoSansSC',
+                            fontSize: 10,
+                            color: mood.color,
+                          ),
+                        ),
+                      ],
+                      const Spacer(),
+                      if (meta.favorite)
+                        Icon(LucideIcons.heart, size: 10, color: c.accent),
+                      if (meta.tags.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            meta.tags.take(2).map((e) => '#$e').join(' '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontFamily: 'NotoSansSC',
+                              fontSize: 9,
+                              color: c.inkMuted,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    final layered = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        card,
+        if (_hoverBefore)
+          const Positioned(top: -2, left: 12, right: 12, child: _DropLine()),
+        if (_hoverAfter)
+          const Positioned(bottom: 2, left: 12, right: 12, child: _DropLine()),
+      ],
+    );
+
+    if (widget.view == 'trash') return layered;
+
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) => _accepts(details.data),
+      onMove: (details) => _updateHover(details.offset),
+      onLeave: (_) => _clearHover(),
+      onAcceptWithDetails: (details) async {
+        final after = _hoverAfter;
+        _clearHover();
+        final id = details.data.substring(5);
+        final ok = await state.reorderNote(id, meta.id, after: after);
+        if (!ok && context.mounted) {
+          showToast(context, '只能在同一天里调整顺序', icon: LucideIcons.alertCircle);
+        }
       },
+      builder: (context, candidate, rejected) => LongPressDraggable<String>(
+        data: 'note:${meta.id}',
+        delay: const Duration(milliseconds: 300),
+        hapticFeedbackOnStart: true,
+        dragAnchorStrategy: pointerDragAnchorStrategy,
+        feedbackOffset: const Offset(-20, -18),
+        feedback: Material(
+          color: Colors.transparent,
+          child: _NoteGhost(meta: meta),
+        ),
+        childWhenDragging: Opacity(opacity: 0.28, child: layered),
+        onDragStarted: () {
+          // 只冻结顺序，不切换排序模式：切换会重建列表、打断拖动。
+          state.prepareManualOrder();
+        },
+        onDragEnd: (_) => _clearHover(),
+        child: layered,
+      ),
     );
   }
 
@@ -776,7 +867,7 @@ class NoteCard extends StatelessWidget {
       items: [
         PopupMenuItem(value: 'pin', child: Text(meta.pinned ? '取消置顶' : '置顶')),
         PopupMenuItem(value: 'fav', child: Text(meta.favorite ? '取消收藏' : '收藏')),
-        if (view != 'trash') ...[
+        if (widget.view != 'trash') ...[
           const PopupMenuItem(value: 'duplicate', child: Text('复制一份')),
           const PopupMenuItem(value: 'export', child: Text('导出…')),
           const PopupMenuItem(value: 'trash', child: Text('移到回收站')),
@@ -795,26 +886,13 @@ class NoteCard extends StatelessWidget {
           await state.toggleFavorite(meta);
           break;
         case 'trash':
-          final box = context.findRenderObject() as RenderBox?;
-          final from = box != null
-              ? box.localToGlobal(Offset.zero) & box.size
-              : Rect.fromCenter(
-                  center: Offset(
-                    MediaQuery.sizeOf(context).width / 2,
-                    MediaQuery.sizeOf(context).height / 2,
-                  ),
-                  width: 200,
-                  height: 60,
-                );
-          await TrashFly.fly(
-            context: context,
-            from: from,
-            title: meta.title,
-            after: () => state.trashNote(meta.id),
-          );
+          widget.onRequestTrash?.call(meta);
           break;
         case 'restore':
           await state.restoreNote(meta.id);
+          if (context.mounted) {
+            showToast(context, '已恢复到原来的位置', icon: LucideIcons.recycle);
+          }
           break;
         case 'purge':
           if (await showConfirm(
@@ -828,18 +906,9 @@ class NoteCard extends StatelessWidget {
           }
           break;
         case 'duplicate':
-          final note = await state.store.loadNote(meta.id);
-          if (note != null) {
-            final copy = Note.fromJson({
-              ...note.toJson(),
-              'id': '${note.id}-copy-${DateTime.now().millisecondsSinceEpoch}',
-              'title': '${note.title} 副本',
-              'createdAt': DateTime.now().toIso8601String(),
-              'updatedAt': DateTime.now().toIso8601String(),
-            });
-            await state.store.saveNote(copy);
-            state.notes.insert(0, copy.toMeta());
-            await state.store.persistLibrary(state.notes);
+          final copy = await state.duplicateNote(meta.id);
+          if (copy != null && context.mounted) {
+            showToast(context, '已复制一份', icon: LucideIcons.copy);
           }
           break;
         case 'export':
@@ -928,7 +997,14 @@ class NoteCard extends StatelessWidget {
                       ),
                       onPressed: () async {
                         await state.restoreNote(meta.id);
-                        if (context.mounted) Navigator.of(context).pop();
+                        if (context.mounted) {
+                          showToast(
+                            context,
+                            '已恢复',
+                            icon: LucideIcons.recycle,
+                          );
+                          Navigator.of(context).pop();
+                        }
                       },
                       icon: const Icon(LucideIcons.recycle, size: 14),
                       label: const Text('恢复'),
@@ -940,6 +1016,34 @@ class NoteCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _DropLine extends StatelessWidget {
+  const _DropLine();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return Row(
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(color: c.accent, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Container(
+            height: 2,
+            decoration: BoxDecoration(
+              color: c.accent,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

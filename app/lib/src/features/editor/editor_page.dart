@@ -1,6 +1,11 @@
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -12,9 +17,13 @@ import '../../core/ui.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../export_sheet.dart';
+import '../tag_editor.dart';
+import '../../services/exporter.dart';
 import 'editor_toolbar.dart';
+import 'find_bar.dart';
 import 'huazi.dart';
 import 'image_embed.dart';
+import 'outline_panel.dart';
 import 'quill_theme.dart';
 
 class EditorPage extends StatelessWidget {
@@ -46,13 +55,74 @@ class EditorPage extends StatelessWidget {
             onBack: onBack,
             onToggleZen: onToggleZen,
           ),
+        if (!zen && state.saveStatus == SaveStatus.error)
+          _SaveErrorBanner(state: state, session: session, mobile: mobile),
         if (!zen && !mobile)
           EditorToolbar(controller: session.controller, session: session),
+        // 查找条占一行，不浮在纸面上盖住标题和日期。
+        AnimatedBuilder(
+          animation: session,
+          builder: (context, _) {
+            if (zen || !session.findOpen) return const SizedBox.shrink();
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                mobile ? 8 : 24,
+                8,
+                mobile ? 8 : 24,
+                0,
+              ),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: FindBar(session: session, mobile: mobile),
+              ),
+            );
+          },
+        ),
         Expanded(
-          child: _EditorCanvas(
-            mobile: mobile,
-            zen: zen,
-            onToggleZen: onToggleZen,
+          child: Row(
+            children: [
+              Expanded(
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: _EditorCanvas(
+                        mobile: mobile,
+                        zen: zen,
+                        onToggleZen: onToggleZen,
+                      ),
+                    ),
+                    if (!zen && mobile)
+                      Positioned(
+                        top: 10,
+                        left: 8,
+                        child: AnimatedBuilder(
+                          animation: session,
+                          builder: (context, _) => session.outlineOpen
+                              ? OutlinePanel(session: session)
+                              : const SizedBox.shrink(),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (!zen)
+                AnimatedBuilder(
+                  animation: session,
+                  builder: (context, _) {
+                    final open = session.outlineOpen && !mobile;
+                    return ClipRect(
+                      child: AnimatedContainer(
+                        duration: Motion.base,
+                        curve: Motion.enter,
+                        width: open ? 220 : 0,
+                        child: open
+                            ? OutlinePanel(session: session, docked: true)
+                            : const SizedBox.shrink(),
+                      ),
+                    );
+                  },
+                ),
+            ],
           ),
         ),
         if (!zen && mobile)
@@ -195,6 +265,26 @@ class _EditorTopBar extends StatelessWidget {
             },
           ),
           const SizedBox(width: 6),
+          AnimatedBuilder(
+            animation: session,
+            builder: (context, _) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SoftIconButton(
+                  icon: LucideIcons.search,
+                  tooltip: '查找 · Ctrl F',
+                  active: session.findOpen,
+                  onPressed: () => session.openFind(),
+                ),
+                SoftIconButton(
+                  icon: LucideIcons.listTree,
+                  tooltip: '目录',
+                  active: session.outlineOpen,
+                  onPressed: session.toggleOutline,
+                ),
+              ],
+            ),
+          ),
           SoftIconButton(
             icon: LucideIcons.share2,
             tooltip: '导出 · 图片 / PDF / Word',
@@ -296,7 +386,7 @@ class _EditorTopBar extends StatelessWidget {
                         return ListView.separated(
                           shrinkWrap: true,
                           itemCount: list.length,
-                          separatorBuilder: (_, __) => Divider(color: c.line),
+                          separatorBuilder: (_, _) => Divider(color: c.line),
                           itemBuilder: (context, i) {
                             final s = list[i];
                             final latest = i == 0;
@@ -334,13 +424,12 @@ class _EditorTopBar extends StatelessWidget {
                                 ),
                                 TextButton(
                                   onPressed: () async {
-                                    final ok = await showConfirm(
-                                      context,
-                                      title: '恢复这个版本？',
-                                      message: '当前内容会被替换，但会先自动保存一次。',
-                                      confirmLabel: '恢复',
-                                    );
-                                    if (ok) {
+                                     final ok = await showConfirm(
+                                       context,
+                                       title: '回到这个版本？',
+                                       message: '当前内容会先存成一个新的历史版本，之后还能再回来。',
+                                       confirmLabel: '回到这里',
+                                     );                                    if (ok) {
                                       await state.restoreSnapshot(s);
                                       if (context.mounted) Navigator.of(context).pop();
                                     }
@@ -398,16 +487,39 @@ class _MoreMenu extends StatelessWidget {
             if (matches.isNotEmpty) await state.toggleFavorite(matches.first);
             break;
           case 'trash':
-            final ok = await showConfirm(
+            // 不再先弹确认框：删除立刻发生，用撤销兜住误触。
+            showToast(
               context,
-              title: '移到回收站？',
-              message: '这篇文字会先放进回收站，之后仍可恢复。',
-              confirmLabel: '移到回收站',
-              danger: true,
+              '已移到回收站',
+              actionLabel: '撤销',
+              onAction: () => state.restoreNote(note.id),
             );
-            if (ok) {
-              await state.trashNote(note.id);
-              onBack?.call();
+            await state.trashNote(note.id);
+            onBack?.call();
+            break;
+          case 'typography':
+            final count = state.session?.normalizeTypography() ?? 0;
+            if (context.mounted) {
+              showToast(
+                context,
+                count == 0 ? '这段文字已经很整齐了' : '已整理 $count 段排版，Ctrl Z 可撤销',
+                icon: count == 0 ? LucideIcons.check : LucideIcons.sparkles,
+              );
+            }
+            break;
+          case 'copyMd':            await state.saveNow();
+            await Clipboard.setData(
+              ClipboardData(text: NoteExporter(state.store).markdown(note)),
+            );
+            if (context.mounted) {
+              showToast(context, '已复制为 Markdown', icon: LucideIcons.check);
+            }
+            break;
+          case 'copyText':
+            await state.saveNow();
+            await Clipboard.setData(ClipboardData(text: note.text));
+            if (context.mounted) {
+              showToast(context, '已复制为纯文本', icon: LucideIcons.check);
             }
             break;
           case 'export':
@@ -425,6 +537,9 @@ class _MoreMenu extends StatelessWidget {
           child: Text(note?.favorite == true ? '取消收藏' : '收藏'),
         ),
         const PopupMenuItem(value: 'export', child: Text('导出…')),
+        const PopupMenuItem(value: 'typography', child: Text('整理排版')),
+        const PopupMenuItem(value: 'copyMd', child: Text('复制为 Markdown')),
+        const PopupMenuItem(value: 'copyText', child: Text('复制为纯文本')),
         const PopupMenuDivider(),
         const PopupMenuItem(
           value: 'trash',
@@ -520,6 +635,9 @@ class _EditorCanvas extends StatelessWidget {
                                     c,
                                     scale: state.settings.editorScale,
                                     lineHeight: state.settings.lineHeight,
+                                    paragraphGap: state.settings.paragraphGap,
+                                    letterSpacing:
+                                        state.settings.letterSpacing,
                                   ),
                                   customStyleBuilder: (attribute) =>
                                       quillCustomStyle(attribute, dark: c.isDark),
@@ -750,97 +868,9 @@ class _TitleBlock extends StatelessWidget {
   }
 
   Future<void> _editTags(BuildContext context, EditorSession session) async {
-    final c = AppPalette.of(context);
-    final ctrl = TextEditingController(text: session.note.tags.join(' '));
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: c.surface,
-        title: Text(
-          '标签',
-          style: TextStyle(
-            fontFamily: 'NotoSansSC',
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: c.ink,
-          ),
-        ),
-        content: SizedBox(
-          width: 360,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: ctrl,
-                autofocus: true,
-                style: TextStyle(
-                  fontFamily: 'NotoSansSC',
-                  fontSize: 13,
-                  color: c.ink,
-                ),
-                decoration: InputDecoration(
-                  hintText: '用空格或逗号分隔，如：日常 读书',
-                  hintStyle: TextStyle(
-                    fontFamily: 'NotoSansSC',
-                    fontSize: 12,
-                    color: c.inkMuted,
-                  ),
-                  filled: true,
-                  fillColor: c.paper,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: c.line),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: c.line),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: c.accent),
-                  ),
-                ),
-                onSubmitted: (v) => Navigator.of(context).pop(v),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '标签会显示在列表里，也可以用来筛选。',
-                style: TextStyle(
-                  fontFamily: 'NotoSansSC',
-                  fontSize: 10,
-                  color: c.inkMuted,
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text('取消', style: TextStyle(color: c.inkMuted)),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: c.ink,
-              foregroundColor: c.paper,
-            ),
-            onPressed: () => Navigator.of(context).pop(ctrl.text),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
-    if (result != null) {
-      final tags = result
-          .split(RegExp(r'[\s,，、#]+'))
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toSet()
-          .toList();
-      await session.setTags(tags);
-    }
-    ctrl.dispose();
+    final state = context.read<AppState>();
+    final tags = await showTagEditor(context, state, session.note.tags);
+    if (tags != null) await session.setTags(tags);
   }
 }
 
@@ -1016,6 +1046,10 @@ class _EditorFooter extends StatelessWidget {
     return AnimatedBuilder(
       animation: session.controller,
       builder: (context, _) {
+        final selected = session.selectedWords;
+        final label = selected > 0
+            ? '已选 $selected 字 · 共 ${session.words} 字'
+            : '${session.words} 字';
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1024,7 +1058,7 @@ class _EditorFooter extends StatelessWidget {
               const SizedBox(width: 5),
             ],
             Text(
-              '${session.words} 字',
+              label,
               style: TextStyle(
                 fontFamily: 'NotoSansSC',
                 fontSize: 9.5,
@@ -1035,6 +1069,119 @@ class _EditorFooter extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// 保存失败不是一行红字就够：给出重试、把全文复制走、另存为三个出口，
+/// 让用户至少不至于把刚写的东西弄丢。
+class _SaveErrorBanner extends StatelessWidget {
+  const _SaveErrorBanner({
+    required this.state,
+    required this.session,
+    required this.mobile,
+  });
+
+  final AppState state;
+  final EditorSession session;
+  final bool mobile;
+
+  String get _detail {
+    final raw =
+        (state.lastSaveError ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (raw.isEmpty) return '文件没有写进去，可能是磁盘空间或权限的问题。';
+    return raw.length > 110 ? '${raw.substring(0, 110)}…' : raw;
+  }
+
+  String get _payload {
+    final title = session.note.title.trim();
+    final body = session.plainText;
+    return title.isEmpty ? body : '$title\n\n$body';
+  }
+
+  Future<void> _copyAll(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: _payload));
+    if (context.mounted) {
+      showToast(context, '全文已复制，可以先粘到别处', icon: LucideIcons.check);
+    }
+  }
+
+  Future<void> _saveAs(BuildContext context) async {
+    final rawTitle = session.note.title.trim();
+    final safe = (rawTitle.isEmpty ? '无题' : rawTitle)
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    final location = await getSaveLocation(
+      suggestedName: '$safe.txt',
+      acceptedTypeGroups: const [
+        XTypeGroup(label: '纯文本', extensions: ['txt']),
+      ],
+    );
+    if (location == null) return;
+    try {
+      await File(location.path).writeAsString(_payload, flush: true);
+      if (context.mounted) {
+        showToast(context, '已另存为 ${p.basename(location.path)}');
+      }
+    } catch (e) {
+      if (context.mounted) showToast(context, '另存失败：$e');
+    }
+  }
+
+  Widget _button(
+    BuildContext context,
+    String label,
+    VoidCallback onPressed,
+  ) {
+    final c = AppPalette.of(context);
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        foregroundColor: c.danger,
+        minimumSize: const Size(0, 28),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(fontFamily: 'NotoSansSC', fontSize: 11),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return Container(
+      padding: EdgeInsets.fromLTRB(mobile ? 12 : 18, 5, mobile ? 8 : 14, 5),
+      decoration: BoxDecoration(
+        color: c.danger.withValues(alpha: 0.07),
+        border: Border(
+          bottom: BorderSide(color: c.danger.withValues(alpha: 0.25)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(LucideIcons.alertCircle, size: 14, color: c.danger),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '保存失败：$_detail',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'NotoSansSC',
+                fontSize: 10.5,
+                height: 1.5,
+                color: c.danger,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          _button(context, '重试', () => state.saveNow()),
+          _button(context, '复制全文', () => _copyAll(context)),
+          if (!mobile) _button(context, '另存为…', () => _saveAs(context)),
+        ],
+      ),
     );
   }
 }

@@ -9,9 +9,10 @@ import 'package:window_manager/window_manager.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
 import '../core/theme_reveal.dart';
-import '../core/trash_fly.dart';
 import '../core/ui.dart';
 import '../state/app_state.dart';
+import '../services/clipboard_image.dart';
+import '../services/file_drop.dart';
 import 'calendar_page.dart';
 import 'command_palette.dart';
 import 'editor/editor_page.dart';
@@ -28,27 +29,65 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> with WindowListener {
+class _AppShellState extends State<AppShell>
+    with WindowListener, WidgetsBindingObserver {
   bool _zen = false;
 
   @override
   void initState() {
     super.initState();
     if (Platform.isWindows) windowManager.addListener(this);
+    WidgetsBinding.instance.addObserver(this);
     HardwareKeyboard.instance.addHandler(_onGlobalKey);
+    FileDropTarget.install(
+      state: context.read<AppState>(),
+      onMessage: (message) {
+        if (mounted) {
+          showToast(context, message, icon: LucideIcons.check);
+        }
+      },
+    );
   }
 
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_onGlobalKey);
+    WidgetsBinding.instance.removeObserver(this);
     if (Platform.isWindows) windowManager.removeListener(this);
+    FileDropTarget.uninstall();
     super.dispose();
+  }
+
+  /// 切后台、失焦前把没落盘的字写下去。手机上被系统回收时，
+  /// 900ms 的自动保存防抖很可能还没跑完。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      context.read<AppState>().saveNow();
+    }
+  }
+
+  /// 关窗先落盘再销毁，避免最后一句随窗口一起消失。
+  @override
+  Future<void> onWindowClose() async {
+    if (!mounted) return;
+    try {
+      await context.read<AppState>().closeApp();
+    } finally {
+      await windowManager.destroy();
+    }
   }
 
   bool _onGlobalKey(KeyEvent event) {
     if (event is! KeyDownEvent) return false;
     final keyboard = HardwareKeyboard.instance;
     if (!keyboard.isControlPressed && !keyboard.isMetaPressed) return false;
+    // 有弹窗/面板在场时不抢键：否则在标签、链接或 AI 面板里按 Ctrl+N，
+    // 会在背后新建笔记并释放当前编辑会话。
+    if (Navigator.of(context, rootNavigator: true).canPop()) return false;
     final state = context.read<AppState>();
     if (event.logicalKey == LogicalKeyboardKey.keyK) {
       showCommandPalette(context);
@@ -60,6 +99,37 @@ class _AppShellState extends State<AppShell> with WindowListener {
     }
     if (event.logicalKey == LogicalKeyboardKey.keyS) {
       state.saveNow();
+      return true;
+    }
+    final session = state.session;
+    if (event.logicalKey == LogicalKeyboardKey.keyV &&
+        !keyboard.isShiftPressed) {
+      // 剪贴板里只有图片时，Ctrl+V 直接贴图；有文字仍走普通粘贴。
+      // 部分输入法会在引擎层拦下 Ctrl+V，这时用工具栏的「粘贴图片」。
+      if (session != null &&
+          session.editorFocus.hasFocus &&
+          ClipboardImage.imageOnly) {
+        session.pasteImageFromClipboard();
+        return true;
+      }
+      return false;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyF &&
+        !keyboard.isShiftPressed) {
+      if (session == null) return false;
+      session.openFind();
+      return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyH) {
+      if (session == null) return false;
+      session.openFind(withReplace: true);
+      return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyV &&
+        keyboard.isShiftPressed) {
+      // 只贴纯文本，去掉网页带来的字体和颜色。
+      if (session == null || !session.editorFocus.hasFocus) return false;
+      session.pastePlainText();
       return true;
     }
     if (event.logicalKey == LogicalKeyboardKey.keyF && keyboard.isShiftPressed) {
@@ -420,7 +490,6 @@ class _Rail extends StatelessWidget {
             tooltip: '切换外观',
           ),
           _RailItem(
-            key: TrashFly.targetKey,
             icon: LucideIcons.trash2,
             label: '回收',
             active: active == 'trash',
@@ -441,7 +510,6 @@ class _Rail extends StatelessWidget {
 
 class _RailItem extends StatelessWidget {
   const _RailItem({
-    super.key,
     required this.icon,
     required this.label,
     required this.active,

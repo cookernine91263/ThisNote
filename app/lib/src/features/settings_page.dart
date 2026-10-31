@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -10,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/library_export.dart';
 import '../services/webdav_service.dart';
 
 import '../core/format.dart';
@@ -213,6 +215,20 @@ class SettingsPage extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 10),
+                  _SliderSetting(
+                    label: '界面字号',
+                    value: s.uiScale,
+                    min: 0.9,
+                    max: 1.15,
+                    display: '${(s.uiScale * 100).round()}%',
+                    suffix: '%',
+                    decimals: 0,
+                    snap: 0.01,
+                    transform: (v) => v * 100,
+                    inverse: (v) => v / 100,
+                    onChanged: (v) => state.updateSettings((x) => x.uiScale = v),
+                  ),
+                  const SizedBox(height: 10),
                   _SettingSwitch(
                     label: '纸张颗粒',
                     description: '在背景上铺一层极淡的纸纹',
@@ -249,6 +265,29 @@ class SettingsPage extends StatelessWidget {
                     decimals: 2,
                     snap: 0.05,
                     onChanged: (v) => state.updateSettings((x) => x.lineHeight = v),
+                  ),
+                  _SliderSetting(
+                    label: '段间距',
+                    value: s.paragraphGap,
+                    min: 0,
+                    max: 24,
+                    display: '${s.paragraphGap.round()} px',
+                    suffix: 'px',
+                    decimals: 0,
+                    snap: 1,
+                    onChanged: (v) =>
+                        state.updateSettings((x) => x.paragraphGap = v),
+                  ),
+                  _SliderSetting(
+                    label: '字间距',
+                    value: s.letterSpacing,
+                    min: 0,
+                    max: 1.2,
+                    display: s.letterSpacing.toStringAsFixed(2),
+                    decimals: 2,
+                    snap: 0.05,
+                    onChanged: (v) =>
+                        state.updateSettings((x) => x.letterSpacing = v),
                   ),
                   _SliderSetting(
                     label: '页宽',
@@ -437,6 +476,18 @@ class SettingsPage extends StatelessWidget {
                         onPressed: () => _restore(context, state),
                       ),
                       SoftButton(
+                        icon: LucideIcons.fileDown,
+                        label: '导入 Markdown',
+                        dense: true,
+                        onPressed: () => _importMarkdown(context, state),
+                      ),
+                      SoftButton(
+                        icon: LucideIcons.folderOutput,
+                        label: '导出全部 Markdown',
+                        dense: true,
+                        onPressed: () => _exportMarkdown(context, state),
+                      ),
+                      SoftButton(
                         icon: LucideIcons.folder,
                         label: '数据文件夹',
                         dense: true,
@@ -601,6 +652,70 @@ class SettingsPage extends StatelessWidget {
     if (context.mounted) showToast(context, '备份已恢复');
   }
 
+  Future<void> _importMarkdown(BuildContext context, AppState state) async {
+    final files = await openFiles(
+      acceptedTypeGroups: const [
+        XTypeGroup(
+          label: 'Markdown / 文本',
+          extensions: ['md', 'markdown', 'txt'],
+        ),
+      ],
+    );
+    if (files.isEmpty) return;
+
+    var count = 0;
+    String? firstError;
+    for (final file in files) {
+      try {
+        final content = utf8.decode(
+          await file.readAsBytes(),
+          allowMalformed: true,
+        );
+        await state.importMarkdown(content: content, filename: file.name);
+        count++;
+      } catch (e) {
+        firstError ??= '${file.name}：$e';
+      }
+    }
+    if (!context.mounted) return;
+    if (count > 0) {
+      showToast(
+        context,
+        '导入了 $count 篇，去「全部」里看看',
+        icon: LucideIcons.check,
+      );
+    } else {
+      showToast(
+        context,
+        firstError ?? '没有可导入的内容',
+        icon: LucideIcons.alertCircle,
+      );
+    }
+  }
+
+  Future<void> _exportMarkdown(BuildContext context, AppState state) async {
+    final dir = await getDirectoryPath(confirmButtonText: '导出到这里');
+    if (dir == null) return;
+    try {
+      final count = await exportLibraryMarkdown(
+        state.store,
+        state.activeNotes,
+        dir,
+      );
+      if (context.mounted) {
+        showToast(
+          context,
+          '已导出 $count 篇到 $dir',
+          icon: LucideIcons.check,
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        showToast(context, '导出失败：$e', icon: LucideIcons.alertCircle);
+      }
+    }
+  }
+
   Future<void> _openFolder(BuildContext context, AppState state) async {
     if (Platform.isWindows) {
       await Process.run('explorer.exe', [state.store.dataPath]);
@@ -695,9 +810,12 @@ class SettingsPage extends StatelessWidget {
       ('Ctrl / ⌘ + K', '命令面板'),
       ('Ctrl / ⌘ + N', '新建笔记'),
       ('Ctrl / ⌘ + S', '立即保存'),
+      ('Ctrl / ⌘ + F', '查找'),
+      ('Ctrl / ⌘ + H', '查找替换'),
       ('Ctrl / ⌘ + B', '加粗'),
       ('Ctrl / ⌘ + I', '倾斜'),
       ('Ctrl / ⌘ + U', '下划线'),
+      ('Ctrl / ⌘ + Shift + V', '粘贴为纯文本'),
       ('Ctrl / ⌘ + Shift + F', '专注模式'),
       ('Ctrl / ⌘ + ,', '设置'),
     ];

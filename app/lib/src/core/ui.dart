@@ -358,7 +358,7 @@ class SectionLabel extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          if (trailing != null) trailing!,
+          ?trailing,
         ],
       ),
     );
@@ -521,13 +521,21 @@ class _InkPainter extends CustomPainter {
       old.ink != ink || old.accent != accent;
 }
 
-Future<void> showToast(BuildContext context, String message, {IconData? icon}) async {
+Future<void> showToast(
+  BuildContext context,
+  String message, {
+  IconData? icon,
+  String? actionLabel,
+  VoidCallback? onAction,
+  Duration duration = const Duration(seconds: 2),
+}) async {
   final c = AppPalette.of(context);
   final messenger = ScaffoldMessenger.of(context);
   messenger.hideCurrentSnackBar();
   messenger.showSnackBar(
     SnackBar(
-      duration: const Duration(seconds: 2),
+      // 带撤销的提示多留一会儿，给手指反应的时间。
+      duration: onAction == null ? duration : const Duration(seconds: 5),
       content: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -543,6 +551,13 @@ Future<void> showToast(BuildContext context, String message, {IconData? icon}) a
           ),
         ],
       ),
+      action: actionLabel == null
+          ? null
+          : SnackBarAction(
+              label: actionLabel,
+              textColor: c.paper,
+              onPressed: onAction ?? () {},
+            ),
     ),
   );
 }

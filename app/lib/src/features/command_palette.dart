@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../core/icons.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
 import '../core/theme_reveal.dart';
 import '../core/ui.dart';
 import '../data/models.dart';
 import '../state/app_state.dart';
+import 'export_sheet.dart';
 
 Future<void> showCommandPalette(BuildContext context) async {
+  final host = context;
   // 主题类命令不在面板里当场执行：先等面板彻底退场，
   // 再由这里接手做圆孔揭示，截图里才不会有残留的面板。
   final request = await showGeneralDialog<_ThemeRequest>(
@@ -19,7 +23,7 @@ Future<void> showCommandPalette(BuildContext context) async {
     barrierLabel: '命令面板',
     barrierColor: Colors.black.withValues(alpha: 0.18),
     transitionDuration: Motion.base,
-    pageBuilder: (context, _, __) => const _CommandDialog(),
+    pageBuilder: (context, _, _) => _CommandDialog(hostContext: host),
     transitionBuilder: (context, animation, _, child) {
       final curved = CurvedAnimation(parent: animation, curve: Motion.spring);
       return FadeTransition(
@@ -59,7 +63,10 @@ class _ThemeRequest {
 }
 
 class _CommandDialog extends StatefulWidget {
-  const _CommandDialog();
+  const _CommandDialog({required this.hostContext});
+
+  /// 面板退场后仍可用的宿主 context，用来做导出、提示这类动作。
+  final BuildContext hostContext;
 
   @override
   State<_CommandDialog> createState() => _CommandDialogState();
@@ -88,101 +95,231 @@ class _CommandDialogState extends State<_CommandDialog> {
     super.dispose();
   }
 
-  List<_Command> _buildCommands(AppState state) => [
+  List<_Command> _buildCommands(AppState state) {
+    final session = state.session;
+    final notes = state.activeNotes.take(40).toList();
+    return [
+      for (final note in notes)
         _Command(
-          icon: LucideIcons.calendarHeart,
-          label: '新建日记',
-          group: '新建',
-          hint: '天气 · 心情 · 三件小事',
-          shortcut: 'Ctrl N',
-          action: () => state.createNote(kind: NoteKind.diary),
+          icon: kindIcon(note.kind),
+          label: '打开：${note.title.trim().isEmpty ? '无题' : note.title.trim()}',
+          group: '笔记',
+          hint: note.excerpt.isEmpty ? '${note.words} 字' : note.excerpt,
+          isNote: true,
+          action: () => state.openNote(note.id),
+        ),
+      _Command(
+        icon: LucideIcons.calendarHeart,
+        label: '新建日记',
+        group: '新建',
+        hint: '天气 · 心情 · 三件小事',
+        shortcut: 'Ctrl N',
+        action: () => state.createNote(kind: NoteKind.diary),
+      ),
+      _Command(
+        icon: LucideIcons.penLine,
+        label: '新建随笔',
+        group: '新建',
+        hint: '一张空白纸',
+        action: () => state.createNote(kind: NoteKind.note),
+      ),
+      _Command(
+        icon: LucideIcons.feather,
+        label: '新建作文',
+        group: '新建',
+        hint: '题目 · 开头 · 正文 · 结尾',
+        action: () => state.createNote(kind: NoteKind.essay),
+      ),
+      _Command(
+        icon: LucideIcons.sun,
+        label: '前往今日',
+        group: '前往',
+        hint: '今天写下的文字',
+        action: () => state.setView('today'),
+      ),
+      _Command(
+        icon: LucideIcons.library,
+        label: '全部笔记',
+        group: '前往',
+        hint: '所有写下的日子',
+        action: () => state.setView('all'),
+      ),
+      _Command(
+        icon: LucideIcons.calendarDays,
+        label: '日历',
+        group: '前往',
+        hint: '按日期回看',
+        action: () => state.setView('calendar'),
+      ),
+      _Command(
+        icon: LucideIcons.tag,
+        label: '标签',
+        group: '前往',
+        hint: '按主题整理',
+        action: () => state.setView('tags'),
+      ),
+      _Command(
+        icon: LucideIcons.chartNoAxesColumn,
+        label: '写作统计',
+        group: '前往',
+        hint: '连续天数与热力图',
+        action: () => state.setView('stats'),
+      ),
+      _Command(
+        icon: LucideIcons.settings,
+        label: '设置',
+        group: '前往',
+        hint: '外观 · 编辑器 · 数据',
+        shortcut: 'Ctrl ,',
+        action: () => state.setView('settings'),
+      ),
+      if (session != null) ...[
+        _Command(
+          icon: LucideIcons.search,
+          label: '查找',
+          group: '编辑',
+          hint: '当前笔记内查找与替换',
+          shortcut: 'Ctrl F',
+          action: session.openFind,
         ),
         _Command(
-          icon: LucideIcons.penLine,
-          label: '新建随笔',
-          group: '新建',
-          hint: '一张空白纸',
-          action: () => state.createNote(kind: NoteKind.note),
+          icon: LucideIcons.listTree,
+          label: '目录',
+          group: '编辑',
+          hint: '按标题 1–3 生成大纲',
+          action: session.toggleOutline,
         ),
         _Command(
-          icon: LucideIcons.feather,
-          label: '新建作文',
-          group: '新建',
-          hint: '题目 · 开头 · 正文 · 结尾',
-          action: () => state.createNote(kind: NoteKind.essay),
+          icon: LucideIcons.wandSparkles,
+          label: '整理排版',
+          group: '编辑',
+          hint: '中英空格 · 半角标点 · 省略号',
+          action: () => _applyTypography(state),
         ),
         _Command(
-          icon: LucideIcons.sun,
-          label: '前往今日',
-          group: '前往',
-          hint: '今天写下的文字',
-          action: () => state.setView('today'),
-        ),
-        _Command(
-          icon: LucideIcons.library,
-          label: '全部笔记',
-          group: '前往',
-          hint: '所有写下的日子',
-          action: () => state.setView('all'),
-        ),
-        _Command(
-          icon: LucideIcons.calendarDays,
-          label: '日历',
-          group: '前往',
-          hint: '按日期回看',
-          action: () => state.setView('calendar'),
-        ),
-        _Command(
-          icon: LucideIcons.tag,
-          label: '标签',
-          group: '前往',
-          hint: '按主题整理',
-          action: () => state.setView('tags'),
-        ),
-        _Command(
-          icon: LucideIcons.chartNoAxesColumn,
-          label: '写作统计',
-          group: '前往',
-          hint: '连续天数与热力图',
-          action: () => state.setView('stats'),
-        ),
-        _Command(
-          icon: LucideIcons.settings,
-          label: '设置',
-          group: '前往',
-          hint: '外观 · 编辑器 · 数据',
-          shortcut: 'Ctrl ,',
-          action: () => state.setView('settings'),
-        ),
-        _Command(
-          icon: LucideIcons.sun,
-          label: '外观：浅色',
+          icon: LucideIcons.fileText,
+          label: '导出当前笔记…',
           group: '操作',
-          themeMode: ThemeMode.light,
+          hint: 'Word / PDF / 图片 / Markdown',
+          action: () => showExportSheet(widget.hostContext),
         ),
         _Command(
-          icon: LucideIcons.moon,
-          label: '外观：深色',
-          group: '操作',
-          themeMode: ThemeMode.dark,
+          icon: LucideIcons.bold,
+          label: '加粗',
+          group: '格式',
+          shortcut: 'Ctrl B',
+          action: () => _toggleFormat(session, Attribute.bold),
         ),
         _Command(
-          icon: LucideIcons.sunMoon,
-          label: '外观：跟随系统',
-          group: '操作',
-          themeMode: ThemeMode.system,
+          icon: LucideIcons.italic,
+          label: '倾斜',
+          group: '格式',
+          shortcut: 'Ctrl I',
+          action: () => _toggleFormat(session, Attribute.italic),
         ),
         _Command(
-          icon: LucideIcons.lock,
-          label: '立即锁定',
-          group: '操作',
-          hint: '需要先设置密码',
-          action: () {
-            if (state.settings.lockEnabled) state.lock();
-          },
+          icon: LucideIcons.underline,
+          label: '下划线',
+          group: '格式',
+          shortcut: 'Ctrl U',
+          action: () => _toggleFormat(session, Attribute.underline),
         ),
-      ];
+        _Command(
+          icon: LucideIcons.heading1,
+          label: '标题 1',
+          group: '格式',
+          action: () => _setHeader(session, 1),
+        ),
+        _Command(
+          icon: LucideIcons.heading2,
+          label: '标题 2',
+          group: '格式',
+          action: () => _setHeader(session, 2),
+        ),
+        _Command(
+          icon: LucideIcons.list,
+          label: '无序列表',
+          group: '格式',
+          action: () => _toggleList(session, 'bullet'),
+        ),
+        _Command(
+          icon: LucideIcons.listOrdered,
+          label: '有序列表',
+          group: '格式',
+          action: () => _toggleList(session, 'ordered'),
+        ),
+        _Command(
+          icon: LucideIcons.textQuote,
+          label: '引用',
+          group: '格式',
+          action: () => _toggleFormat(session, Attribute.blockQuote),
+        ),
+      ],
+      _Command(
+        icon: LucideIcons.sun,
+        label: '外观：浅色',
+        group: '操作',
+        themeMode: ThemeMode.light,
+      ),
+      _Command(
+        icon: LucideIcons.moon,
+        label: '外观：深色',
+        group: '操作',
+        themeMode: ThemeMode.dark,
+      ),
+      _Command(
+        icon: LucideIcons.sunMoon,
+        label: '外观：跟随系统',
+        group: '操作',
+        themeMode: ThemeMode.system,
+      ),
+      _Command(
+        icon: LucideIcons.lock,
+        label: '立即锁定',
+        group: '操作',
+        hint: '需要先设置密码',
+        action: () {
+          if (state.settings.lockEnabled) state.lock();
+        },
+      ),
+    ];
+  }
 
+  void _toggleFormat(EditorSession session, Attribute attr) {
+    final has = session.controller.getSelectionStyle().attributes.containsKey(attr.key);
+    session.controller.formatSelection(
+      has ? Attribute.clone(attr, null) : attr,
+    );
+    session.editorFocus.requestFocus();
+  }
+
+  void _setHeader(EditorSession session, int level) {
+    session.controller.formatSelection(
+      Attribute('header', AttributeScope.block, level),
+    );
+    session.editorFocus.requestFocus();
+  }
+
+  void _toggleList(EditorSession session, String kind) {
+    final current = session.controller
+        .getSelectionStyle()
+        .attributes[Attribute.list.key]
+        ?.value;
+    session.controller.formatSelection(
+      current == kind
+          ? Attribute.clone(Attribute.ul, null)
+          : Attribute('list', AttributeScope.block, kind),
+    );
+    session.editorFocus.requestFocus();
+  }
+
+  void _applyTypography(AppState state) {
+    final count = state.session?.normalizeTypography() ?? 0;
+    showToast(
+      widget.hostContext,
+      count == 0 ? '这段文字已经很整齐了' : '已整理 $count 段排版',
+    );
+  }
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final filtered = _filtered;
@@ -223,7 +360,15 @@ class _CommandDialogState extends State<_CommandDialog> {
 
   List<_Command> get _filtered {
     final q = _controller.text.trim().toLowerCase();
-    if (q.isEmpty) return _commands;
+    if (q.isEmpty) {
+      // 没输入时只露出最近几篇，别让笔记淹掉命令。
+      var notes = 0;
+      return _commands.where((command) {
+        if (!command.isNote) return true;
+        notes++;
+        return notes <= 6;
+      }).toList();
+    }
     return _commands.where((c) {
       return c.label.toLowerCase().contains(q) ||
           c.group.toLowerCase().contains(q) ||
@@ -436,6 +581,7 @@ class _Command {
     this.themeMode,
     this.hint,
     this.shortcut,
+    this.isNote = false,
   }) : assert(action != null || themeMode != null, '命令总得做点什么');
 
   final IconData icon;
@@ -443,6 +589,9 @@ class _Command {
   final String group;
   final String? hint;
   final String? shortcut;
+
+  /// 是「打开某篇笔记」而不是普通命令；空搜索时只显示最近几篇。
+  final bool isNote;
 
   /// 普通命令：面板关掉之后直接执行。
   final FutureOrValue? action;

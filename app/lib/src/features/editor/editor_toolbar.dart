@@ -101,7 +101,8 @@ class EditorToolbar extends StatelessWidget {
               _ => '正文',
             },
             active: header != null,
-            width: 72,
+            // 「标题 1」比「正文」宽，72 会在换行字体下溢出几像素。
+            width: 84,
             menu: [
               _MenuItem('正文', () => applyHeader(null)),
               _MenuItem('标题 1', () => applyHeader(1)),
@@ -261,6 +262,11 @@ class EditorToolbar extends StatelessWidget {
             onPressed: () => _insertImage(context),
           ),
           _ToolButton(
+            icon: LucideIcons.clipboardPaste,
+            tooltip: '粘贴图片（来自剪贴板）',
+            onPressed: () => _pasteImage(context),
+          ),
+          _ToolButton(
             icon: LucideIcons.separatorHorizontal,
             tooltip: '分隔线',
             onPressed: session.insertDivider,
@@ -326,6 +332,16 @@ class EditorToolbar extends StatelessWidget {
     );
     session.insertImage(rel);
     session.editorFocus.requestFocus();
+  }
+
+  Future<void> _pasteImage(BuildContext context) async {
+    final ok = await session.pasteImageFromClipboard();
+    if (!context.mounted) return;
+    if (!ok) {
+      showToast(context, '剪贴板里没有可粘贴的图片', icon: LucideIcons.alertCircle);
+    } else {
+      session.editorFocus.requestFocus();
+    }
   }
 
   Future<String?> _linkDialog(

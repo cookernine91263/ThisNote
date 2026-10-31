@@ -471,10 +471,13 @@ class AppSettings {
   AppSettings({
     this.themeMode = ThemeMode.light,
     this.accent = 'vermilion',
+    this.uiScale = 1.0,
     this.paperTexture = true,
     this.editorWidth = 720,
     this.editorScale = 1,
     this.lineHeight = 1.9,
+    this.paragraphGap = 0,
+    this.letterSpacing = 0.15,
     this.dailyGoal = 500,
     this.lockEnabled = false,
     this.pinHash,
@@ -489,10 +492,13 @@ class AppSettings {
 
   ThemeMode themeMode;
   String accent;
+  double uiScale;
   bool paperTexture;
   double editorWidth;
   double editorScale;
   double lineHeight;
+  double paragraphGap;
+  double letterSpacing;
   int dailyGoal;
   bool lockEnabled;
   String? pinHash;
@@ -510,10 +516,13 @@ class AppSettings {
   Map<String, dynamic> toJson() => {
         'themeMode': themeMode.name,
         'accent': accent,
+        'uiScale': uiScale,
         'paperTexture': paperTexture,
         'editorWidth': editorWidth,
         'editorScale': editorScale,
         'lineHeight': lineHeight,
+        'paragraphGap': paragraphGap,
+        'letterSpacing': letterSpacing,
         'dailyGoal': dailyGoal,
         'lockEnabled': lockEnabled,
         'pinHash': pinHash,
@@ -533,10 +542,13 @@ class AppSettings {
           _ => ThemeMode.light,
         },
         accent: (j['accent'] as String?) ?? 'vermilion',
+        uiScale: ((j['uiScale'] as num?) ?? 1.0).toDouble(),
         paperTexture: (j['paperTexture'] as bool?) ?? true,
         editorWidth: ((j['editorWidth'] as num?) ?? 720).toDouble(),
         editorScale: ((j['editorScale'] as num?) ?? 1).toDouble(),
         lineHeight: ((j['lineHeight'] as num?) ?? 1.9).toDouble(),
+        paragraphGap: ((j['paragraphGap'] as num?) ?? 0).toDouble(),
+        letterSpacing: ((j['letterSpacing'] as num?) ?? 0.15).toDouble(),
         dailyGoal: (j['dailyGoal'] as int?) ?? 500,
         lockEnabled: (j['lockEnabled'] as bool?) ?? false,
         pinHash: j['pinHash'] as String?,
