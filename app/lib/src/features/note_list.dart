@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -29,11 +31,161 @@ class _NoteListPanelState extends State<NoteListPanel> {
   final TextEditingController _searchCtrl = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
 
+  /// 拖拽时的实时预览：被拖的卡片先让位，目标位置留出一张卡的空隙。
+  /// 灵感来自看板 drag 的「卡片跟着指针走、列表实时重排」。
+  String? _dragId;
+  List<({String id, Rect rect})>? _dragRects;
+  Offset? _lastDragPoint;
+  _DropPreview? _preview;
+  String? _lastGeneration;
+  final Map<String, GlobalKey> _cardKeys = {};
+
   @override
   void dispose() {
     _searchCtrl.dispose();
     _searchFocus.dispose();
     super.dispose();
+  }
+
+  /// 列表切视图时 AnimatedSwitcher 会让新旧两份列表同时存在一会儿，
+  /// 卡片的 GlobalKey 必须按这一份列表的 key 分组，否则同一个笔记
+  /// 会在新旧两棵树里各挂一个同名 GlobalKey。
+  String _generation(AppState state) =>
+      '${state.view}-${state.folderFilter}-${state.tagFilter}';
+
+  GlobalKey _keyFor(String generation, String id) =>
+      _cardKeys.putIfAbsent('$generation::$id', () => GlobalKey());
+
+  Rect? _rectOf(String generation, String id) {
+    final box = _cardKeys['$generation::$id']
+        ?.currentContext
+        ?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  void _beginDrag(String id) {
+    final state = context.read<AppState>();
+    final dragIndex = state.notes.indexWhere((n) => n.id == id);
+    final candidates = <String>[];
+    if (dragIndex >= 0) {
+      final dragNote = state.notes[dragIndex];
+      // 置顶笔记在排序里永远排在最前，跨过置顶/非置顶的界线调序是无效的，
+      // 所以只在同一置顶状态的那一段里找插入点。
+      for (final note in state.visibleNotes) {
+        if (note.id == id ||
+            note.day != dragNote.day ||
+            note.isTrashed ||
+            note.pinned != dragNote.pinned) {
+          continue;
+        }
+        candidates.add(note.id);
+      }
+    }
+    setState(() {
+      _dragId = id;
+      _dragRects = null;
+      _lastDragPoint = null;
+      _preview = null;
+    });
+    // 位置只量一次：等这一帧把被拖走的卡片收起来之后再量。
+    // 之后整个拖动都用这份快照判断插入点，空位让位就不会反过来
+    // 改变判断、再让空位跳走 —— 那正是拖动时「抽搐」的来源。
+    final generation = _generation(state);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _dragId != id) return;
+      final rects = <({String id, Rect rect})>[];
+      for (final candidate in candidates) {
+        final rect = _rectOf(generation, candidate);
+        if (rect != null) rects.add((id: candidate, rect: rect));
+      }
+      setState(() => _dragRects = rects);
+      // 快照晚一帧才就绪；如果这期间指针已经动过，补算一次预览，
+      // 免得用户停在原地时看不到空位。
+      final point = _lastDragPoint;
+      if (point != null) _previewAt(point);
+    });
+  }
+
+  void _endDrag(String id, bool accepted) {
+    if (_dragId != id) return;
+    setState(() {
+      _dragId = null;
+      _dragRects = null;
+      _lastDragPoint = null;
+      _preview = null;
+    });
+  }
+
+  void _setPreview(_DropPreview? next) {
+    if (identical(next, _preview)) return;
+    if (next?.beforeId == _preview?.beforeId &&
+        next?.afterId == _preview?.afterId) {
+      return;
+    }
+    setState(() => _preview = next);
+  }
+
+  /// 指针在列表里移动时，按「第一张中心点在指针下方的卡片」决定空位插在哪。
+  /// 判断用的是拖动开始时量好的位置，不是当前布局：空位一开、卡片一让位，
+  /// 再拿新位置去算就会在两张卡之间来回跳。
+  /// 跨日期不参与排序：指针离开当天那一组就收起空位，松手也不改顺序。
+  void _previewAt(Offset global) {
+    _lastDragPoint = global;
+    if (_dragId == null) return;
+    final rects = _dragRects;
+    if (rects == null) return;
+    if (rects.isEmpty) {
+      _setPreview(null);
+      return;
+    }
+    final first = rects.first.rect;
+    final last = rects.last.rect;
+    // 允许在组标题附近留一点余量，但离开这一组就取消预览。
+    if (global.dy < first.top - 36 || global.dy > last.bottom + 36) {
+      _setPreview(null);
+      return;
+    }
+    String? beforeId;
+    for (final entry in rects) {
+      if (global.dy < entry.rect.center.dy) {
+        beforeId = entry.id;
+        break;
+      }
+    }
+    _setPreview(
+      _DropPreview(
+        beforeId: beforeId,
+        afterId: beforeId == null ? rects.last.id : null,
+      ),
+    );
+  }
+
+  Future<void> _commitDrop() async {
+    final dragId = _dragId;
+    final preview = _preview;
+    if (dragId == null) return;
+    setState(() {
+      _dragId = null;
+      _dragRects = null;
+      _lastDragPoint = null;
+      _preview = null;
+    });
+    if (preview == null) {
+      showToast(
+        context,
+        _t('同一天、同样置顶状态的笔记才能调整顺序'),
+        icon: LucideIcons.alertCircle,
+      );
+      return;
+    }
+    final target = preview.beforeId ?? preview.afterId;
+    if (target == null) return;
+    await context.read<AppState>().reorderNote(
+      dragId,
+      target,
+      after: preview.beforeId == null,
+    );
   }
 
   /// 删除不弹确认框、不飞卡片：先让行快速收起来，再真正删除，
@@ -99,6 +251,15 @@ class _NoteListPanelState extends State<NoteListPanel> {
     };
     final notes = state.visibleNotes;
     final list = _grouped(state, notes);
+    final generation = _generation(state);
+    if (_lastGeneration != generation) {
+      _lastGeneration = generation;
+      // 旧列表还在做退场动画时仍然握着旧的 GlobalKey，这里只是不再跟踪它们。
+      _cardKeys.removeWhere((key, _) => !key.startsWith('$generation::'));
+    }
+    final dragIndex =
+        _dragId == null ? -1 : state.notes.indexWhere((n) => n.id == _dragId);
+    final dragMeta = dragIndex < 0 ? null : state.notes[dragIndex];
 
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -343,52 +504,85 @@ class _NoteListPanelState extends State<NoteListPanel> {
               ),
               child: list.isEmpty
                   ? _empty(context, state)
-                  : Scrollbar(
-                      child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(10, 2, 10, 20),
-                        itemCount: list.length,
-                        itemBuilder: (context, i) {
-                          final item = list[i];
-                          if (item is _GroupHeader) {
-                            return Padding(
-                              padding: const EdgeInsets.fromLTRB(10, 14, 10, 7),
-                              child: Text(
-                                item.label,
-                                style: TextStyle(
-                                  fontFamily: 'NotoSansSC',
-                                  fontSize: 10,
-                                  letterSpacing: 1.2,
-                                  color: c.inkMuted,
+                  : DragTarget<String>(
+                      onWillAcceptWithDetails: (details) =>
+                          details.data.startsWith('note:'),
+                      onMove: (details) => _previewAt(details.offset),
+                      onAcceptWithDetails: (_) => _commitDrop(),
+                      builder: (context, candidate, rejected) => Scrollbar(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(10, 2, 10, 20),
+                          itemCount: list.length,
+                          itemBuilder: (context, i) {
+                            final item = list[i];
+                            if (item is _GroupHeader) {
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(10, 14, 10, 7),
+                                child: Text(
+                                  item.label,
+                                  style: TextStyle(
+                                    fontFamily: 'NotoSansSC',
+                                    fontSize: 10,
+                                    letterSpacing: 1.2,
+                                    color: c.inkMuted,
+                                  ),
+                                ),
+                              );
+                            }
+                            final note = item as NoteMeta;
+                            final removing = _removingId == note.id;
+                            final gapBefore = _preview?.beforeId == note.id;
+                            final gapAfter = _preview?.afterId == note.id;
+                            final dropTarget = gapBefore || gapAfter;
+                            final row = TweenAnimationBuilder<double>(
+                              key: ValueKey('row-${note.id}'),
+                              tween: Tween<double>(
+                                begin: 1,
+                                end: removing ? 0 : 1,
+                              ),
+                              duration: const Duration(milliseconds: 190),
+                              curve: Curves.easeInCubic,
+                              onEnd:
+                                  removing ? () => _finishTrash(note) : null,
+                              builder: (context, t, child) => ClipRect(
+                                child: Align(
+                                  alignment: Alignment.topCenter,
+                                  heightFactor: t,
+                                  child: Opacity(opacity: t, child: child),
                                 ),
                               ),
-                            );
-                          }
-                          final note = item as NoteMeta;
-                          final removing = _removingId == note.id;
-                          return TweenAnimationBuilder<double>(
-                            key: ValueKey('row-${note.id}'),
-                            tween: Tween<double>(
-                              begin: 1,
-                              end: removing ? 0 : 1,
-                            ),
-                            duration: const Duration(milliseconds: 190),
-                            curve: Curves.easeInCubic,
-                            onEnd: removing ? () => _finishTrash(note) : null,
-                            builder: (context, t, child) => ClipRect(
-                              child: Align(
-                                alignment: Alignment.topCenter,
-                                heightFactor: t,
-                                child: Opacity(opacity: t, child: child),
+                              child: NoteCard(
+                                key: _keyFor(generation, note.id),
+                                meta: note,
+                                selected: state.current?.id == note.id,
+                                view: state.view,
+                                dropTarget: dropTarget,
+                                onDragStart: _beginDrag,
+                                onDragEnd: _endDrag,
+                                onRequestTrash: _requestTrash,
                               ),
-                            ),
-                            child: NoteCard(
-                              meta: note,
-                              selected: state.current?.id == note.id,
-                              view: state.view,
-                              onRequestTrash: _requestTrash,
-                            ),
-                          );
-                        },
+                            );
+                            if (!dropTarget || dragMeta == null) return row;
+                            // 目标位置让出一张卡的空隙，空隙里放半透明的「影子卡」。
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (gapBefore)
+                                  _DragSlot(
+                                    key: const ValueKey('drag-mirror'),
+                                    meta: dragMeta,
+                                  ),
+                                row,
+                                if (gapAfter)
+                                  _DragSlot(
+                                    key: const ValueKey('drag-mirror'),
+                                    meta: dragMeta,
+                                  ),
+                              ],
+                            );
+                          },
+                        ),
                       ),
                     ),
             ),
@@ -527,45 +721,249 @@ class _NoteListPanelState extends State<NoteListPanel> {
   }
 }
 
-class _NoteGhost extends StatelessWidget {
-  const _NoteGhost({required this.meta});
+class _NoteCardContent extends StatelessWidget {
+  const _NoteCardContent({
+    required this.meta,
+    this.selected = false,
+    this.showMore = false,
+    this.onMore,
+  });
+
+  final NoteMeta meta;
+  final bool selected;
+  final bool showMore;
+  final ValueChanged<Offset>? onMore;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    final mood = MoodX.fromScore(meta.mood);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (meta.pinned)
+              Padding(
+                padding: const EdgeInsets.only(top: 3, right: 5),
+                child: Icon(LucideIcons.pin, size: 11, color: c.accent),
+              ),
+            Expanded(
+              child: Text(
+                meta.title.trim().isEmpty ? _t('无题') : meta.title.trim(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: 'NotoSansSC',
+                  fontSize: 13.5,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: c.ink,
+                  height: 1.35,
+                ),
+              ),
+            ),
+            if (showMore && onMore != null)
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTapDown: (d) => onMore!(d.globalPosition),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 4, top: 1),
+                    child: Icon(
+                      LucideIcons.ellipsis,
+                      size: 15,
+                      color: c.inkMuted,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          meta.excerpt.isEmpty ? _t('还没有写下正文') : meta.excerpt,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontFamily: 'NotoSansSC',
+            fontSize: 11.5,
+            height: 1.6,
+            color: meta.excerpt.isEmpty ? c.inkMuted : c.inkSoft,
+          ),
+        ),
+        const SizedBox(height: 7),
+        Row(
+          children: [
+            Icon(kindIcon(meta.kind), size: 10, color: c.inkMuted),
+            const SizedBox(width: 4),
+            Text(
+              shortDate(meta.createdAt),
+              style: TextStyle(
+                fontFamily: 'NotoSansSC',
+                fontSize: 9.5,
+                color: c.inkMuted,
+              ),
+            ),
+            const SizedBox(width: 7),
+            Dot(size: 2, color: c.lineStrong),
+            const SizedBox(width: 7),
+            Text(
+              I18n.count(meta.words, '字', 'word'),
+              style: TextStyle(
+                fontFamily: 'NotoSansSC',
+                fontSize: 9.5,
+                color: c.inkMuted,
+              ),
+            ),
+            if (mood != null) ...[
+              const SizedBox(width: 7),
+              Text(
+                mood.emoji,
+                style: TextStyle(
+                  fontFamily: 'NotoSansSC',
+                  fontSize: 10,
+                  color: mood.color,
+                ),
+              ),
+            ],
+            const Spacer(),
+            if (meta.favorite)
+              Icon(LucideIcons.heart, size: 10, color: c.accent),
+            if (meta.tags.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  meta.tags.take(2).map((e) => '#$e').join(' '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'NotoSansSC',
+                    fontSize: 9,
+                    color: c.inkMuted,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// 跟着指针走的整张卡片：和原卡同宽、略微放大并倾斜 1.5°，
+/// 像从列表里被「拿起来」，而不是飘着一枚小纸片。
+/// 跟着指针走的整张卡片：拿起来时轻轻晃一下（阻尼衰减），
+/// 同时放大到 105%，最后停在正常角度。
+class _NoteGhost extends StatefulWidget {
+  const _NoteGhost({required this.meta, required this.width});
+  final NoteMeta meta;
+  final double width;
+
+  @override
+  State<_NoteGhost> createState() => _NoteGhostState();
+}
+
+class _NoteGhostState extends State<_NoteGhost>
+    with TickerProviderStateMixin {
+  late final AnimationController _wobble = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 620),
+  )..forward();
+
+  /// 拿稳之后还留一点点慢速晃动，像被手轻轻拿着。
+  late final AnimationController _sway = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1900),
+  )..repeat(reverse: true);
+
+  late final Listenable _anim = Listenable.merge([_wobble, _sway]);
+
+  @override
+  void dispose() {
+    _wobble.dispose();
+    _sway.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (context, child) {
+        final t = _wobble.value;
+        // 拿起时晃两下，振幅迅速衰减；然后交给很轻的持续晃动。
+        final damp = (1 - t) * (1 - t);
+        final idle = math.sin(_sway.value * math.pi * 2);
+        final angle =
+            math.sin(t * math.pi * 3.8) * 0.024 * damp + idle * 0.006;
+        final sway = math.sin(t * math.pi * 2.6) * 2.6 * damp +
+            math.sin(_sway.value * math.pi * 2 + 1.1) * 1.4;
+        final scale = 1 + 0.06 * Curves.easeOutCubic.transform(t);
+        return Transform.translate(
+          offset: Offset(sway, 0),
+          child: Transform.rotate(
+            angle: angle,
+            child: Transform.scale(scale: scale, child: child),
+          ),
+        );
+      },
+      child: SizedBox(
+        width: widget.width,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 11, 10, 10),
+          decoration: BoxDecoration(
+            color: c.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: c.accent.withValues(alpha: 0.4)),
+            boxShadow: [
+              BoxShadow(
+                color: c.shadow.withValues(alpha: 0.24),
+                blurRadius: 26,
+                offset: const Offset(0, 13),
+              ),
+            ],
+          ),
+          child: _NoteCardContent(meta: widget.meta),
+        ),
+      ),
+    );
+  }
+}
+
+/// 插入位置的「影子卡」：列表在这里让出一张卡的空隙，
+/// 空隙里留一张 45% 透明的同一张卡 —— 松手后它就落在这。
+class _DragSlot extends StatelessWidget {
+  const _DragSlot({required this.meta, super.key});
   final NoteMeta meta;
 
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
-    return Container(
-      width: 220,
-      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
-      decoration: BoxDecoration(
-        color: c.surface,
-        borderRadius: BorderRadius.circular(9),
-        border: Border.all(color: c.accent.withValues(alpha: 0.35)),
-        boxShadow: [
-          BoxShadow(
-            color: c.shadow.withValues(alpha: 0.18),
-            blurRadius: 16,
-            offset: const Offset(0, 7),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Icon(LucideIcons.feather, size: 14, color: c.accent),
-          const SizedBox(width: 7),
-          Expanded(
-            child: Text(
-              meta.title.trim().isEmpty ? _t('无题') : meta.title.trim(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontFamily: 'NotoSansSC',
-                fontSize: 11,
-                color: c.ink,
-              ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: IgnorePointer(
+        child: Opacity(
+          opacity: 0.45,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 11, 10, 10),
+            decoration: BoxDecoration(
+              color: c.surface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: c.accent.withValues(alpha: 0.35)),
+              boxShadow: [
+                BoxShadow(
+                  color: c.shadow.withValues(alpha: 0.16),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
+            child: _NoteCardContent(meta: meta),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -576,13 +974,23 @@ class _GroupHeader {
   final String label;
 }
 
-/// 长按整张卡片即可拖动排序；拖到另一张卡片的上半/下半，
-/// 会出现一条插入线。跨日期不参与排序，拖进文件夹仍走原来的通道。
+/// 拖拽预览：空位插在哪张卡的前面 / 后面。
+class _DropPreview {
+  const _DropPreview({this.beforeId, this.afterId});
+  final String? beforeId;
+  final String? afterId;
+}
+
+/// 整张卡片就是拖拽源；按下即拖（触屏仍是长按），
+/// 放下的判断交给整个列表的 DragTarget，卡片本身不再各自抢指针。
 class NoteCard extends StatefulWidget {
   const NoteCard({
     required this.meta,
     required this.selected,
     required this.view,
+    this.dropTarget = false,
+    this.onDragStart,
+    this.onDragEnd,
     this.onRequestTrash,
     super.key,
   });
@@ -590,6 +998,9 @@ class NoteCard extends StatefulWidget {
   final NoteMeta meta;
   final bool selected;
   final String view;
+  final bool dropTarget;
+  final ValueChanged<String>? onDragStart;
+  final void Function(String id, bool accepted)? onDragEnd;
   final ValueChanged<NoteMeta>? onRequestTrash;
 
   @override
@@ -597,271 +1008,123 @@ class NoteCard extends StatefulWidget {
 }
 
 class _NoteCardState extends State<NoteCard> {
-  final GlobalKey _cardKey = GlobalKey();
-  bool _hoverBefore = false;
-  bool _hoverAfter = false;
-
   NoteMeta get meta => widget.meta;
-
-  /// 只接受同一天的另一张卡片：列表是按日期分组的，
-  /// 跨组插入会让日期分组失去意义。
-  bool _accepts(String data) {
-    if (!data.startsWith('note:')) return false;
-    final id = data.substring(5);
-    if (id == meta.id) return false;
-    final state = context.read<AppState>();
-    final index = state.notes.indexWhere((n) => n.id == id);
-    if (index < 0) return false;
-    final source = state.notes[index];
-    return !source.isTrashed && source.day == meta.day;
-  }
-
-  void _updateHover(Offset globalPosition) {
-    final box = _cardKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return;
-    final after = box.globalToLocal(globalPosition).dy > box.size.height / 2;
-    if (after == _hoverAfter && !after == _hoverBefore) return;
-    setState(() {
-      _hoverAfter = after;
-      _hoverBefore = !after;
-    });
-  }
-
-  void _clearHover() {
-    if (!_hoverBefore && !_hoverAfter) return;
-    setState(() {
-      _hoverBefore = false;
-      _hoverAfter = false;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
-    final c = AppPalette.of(context);
-    final state = context.read<AppState>();
-    final mood = MoodX.fromScore(meta.mood);
-    final hot = _hoverBefore || _hoverAfter;
-
-    final card = Padding(
-      key: _cardKey,
-      padding: const EdgeInsets.only(bottom: 4),
-      child: HoverBuilder(
-        builder: (context, hovered, t) {
-          final bg = widget.selected
-              ? c.accentSoft
-              : hovered
-                  ? c.paper
-                  : Colors.transparent;
-          return GestureDetector(
-            onTap: () {
-              if (widget.view == 'trash') {
-                _showTrashPreview(context, state, meta);
-              } else {
-                state.openNote(meta.id);
-              }
-            },
-            onSecondaryTapDown: (details) => _showContextMenu(
-              context,
-              state,
-              meta,
-              details.globalPosition,
-            ),
-            child: AnimatedContainer(
-              duration: Motion.fast,
-              curve: Motion.enter,
-              padding: const EdgeInsets.fromLTRB(12, 11, 10, 10),
-              decoration: BoxDecoration(
-                color: bg,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: hot
-                      ? c.accent.withValues(alpha: 0.55)
-                      : widget.selected
-                          ? c.accent.withValues(alpha: 0.25)
-                          : hovered
-                              ? c.line
-                              : Colors.transparent,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final state = context.read<AppState>();
+        final card = Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: HoverBuilder(
+            cursor: widget.view == 'trash'
+                ? SystemMouseCursors.click
+                : SystemMouseCursors.grab,
+            builder: (context, hovered, t) {
+              final c = AppPalette.of(context);
+              final bg = widget.selected
+                  ? c.accentSoft
+                  : hovered
+                      ? c.paper
+                      : Colors.transparent;
+              return GestureDetector(
+                onTap: () {
+                  if (widget.view == 'trash') {
+                    _showTrashPreview(context, state, meta);
+                  } else {
+                    state.openNote(meta.id);
+                  }
+                },
+                onSecondaryTapDown: (details) => _showContextMenu(
+                  context,
+                  state,
+                  meta,
+                  details.globalPosition,
                 ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (meta.pinned)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 3, right: 5),
-                          child: Icon(
-                            LucideIcons.pin,
-                            size: 11,
-                            color: c.accent,
-                          ),
-                        ),
-                      Expanded(
-                        child: Text(
-                          meta.title.trim().isEmpty
-                              ? _t('无题')
-                              : meta.title.trim(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontFamily: 'NotoSansSC',
-                            fontSize: 13.5,
-                            fontWeight: widget.selected
-                                ? FontWeight.w600
-                                : FontWeight.w500,
-                            color: c.ink,
-                            height: 1.35,
-                          ),
-                        ),
-                      ),
-                      if (hovered || widget.selected)
-                        GestureDetector(
-                          onTapDown: (d) => _showContextMenu(
-                            context,
-                            state,
-                            meta,
-                            d.globalPosition,
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.only(left: 4, top: 1),
-                            child: Icon(
-                              LucideIcons.ellipsis,
-                              size: 15,
-                              color: c.inkMuted,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    meta.excerpt.isEmpty ? _t('还没有写下正文') : meta.excerpt,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: 'NotoSansSC',
-                      fontSize: 11.5,
-                      height: 1.6,
-                      color: meta.excerpt.isEmpty ? c.inkMuted : c.inkSoft,
+                child: AnimatedContainer(
+                  duration: Motion.fast,
+                  curve: Motion.enter,
+                  padding: const EdgeInsets.fromLTRB(12, 11, 10, 10),
+                  decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: widget.dropTarget
+                          ? c.accent.withValues(alpha: 0.6)
+                          : widget.selected
+                              ? c.accent.withValues(alpha: 0.25)
+                              : hovered
+                                  ? c.line
+                                  : Colors.transparent,
                     ),
-                  ),
-                  const SizedBox(height: 7),
-                  Row(
-                    children: [
-                      Icon(
-                        kindIcon(meta.kind),
-                        size: 10,
-                        color: c.inkMuted,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        shortDate(meta.createdAt),
-                        style: TextStyle(
-                          fontFamily: 'NotoSansSC',
-                          fontSize: 9.5,
-                          color: c.inkMuted,
-                        ),
-                      ),
-                      const SizedBox(width: 7),
-                      Dot(size: 2, color: c.lineStrong),
-                      const SizedBox(width: 7),
-                      Text(
-                        I18n.count(meta.words, '字', 'word'),
-                        style: TextStyle(
-                          fontFamily: 'NotoSansSC',
-                          fontSize: 9.5,
-                          color: c.inkMuted,
-                        ),
-                      ),
-                      if (mood != null) ...[
-                        const SizedBox(width: 7),
-                        Text(
-                          mood.emoji,
-                          style: TextStyle(
-                            fontFamily: 'NotoSansSC',
-                            fontSize: 10,
-                            color: mood.color,
-                          ),
-                        ),
-                      ],
-                      const Spacer(),
-                      if (meta.favorite)
-                        Icon(LucideIcons.heart, size: 10, color: c.accent),
-                      if (meta.tags.isNotEmpty) ...[
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            meta.tags.take(2).map((e) => '#$e').join(' '),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontFamily: 'NotoSansSC',
-                              fontSize: 9,
-                              color: c.inkMuted,
+                    boxShadow: widget.dropTarget
+                        ? [
+                            BoxShadow(
+                              color: c.accent.withValues(alpha: 0.12),
+                              blurRadius: 14,
                             ),
-                          ),
-                        ),
-                      ],
-                    ],
+                          ]
+                        : null,
                   ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
+                  child: _NoteCardContent(
+                    meta: meta,
+                    selected: widget.selected,
+                    showMore: hovered || widget.selected,
+                    onMore: (position) =>
+                        _showContextMenu(context, state, meta, position),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
 
-    final layered = Stack(
-      clipBehavior: Clip.none,
-      children: [
-        card,
-        if (_hoverBefore)
-          const Positioned(top: -2, left: 12, right: 12, child: _DropLine()),
-        if (_hoverAfter)
-          const Positioned(bottom: 2, left: 12, right: 12, child: _DropLine()),
-      ],
-    );
+        if (widget.view == 'trash') return card;
 
-    if (widget.view == 'trash') return layered;
-
-    return DragTarget<String>(
-      onWillAcceptWithDetails: (details) => _accepts(details.data),
-      onMove: (details) => _updateHover(details.offset),
-      onLeave: (_) => _clearHover(),
-      onAcceptWithDetails: (details) async {
-        final after = _hoverAfter;
-        _clearHover();
-        final id = details.data.substring(5);
-        final ok = await state.reorderNote(id, meta.id, after: after);
-        if (!ok && context.mounted) {
-          showToast(
-            context,
-            _t('只能在同一天里调整顺序'),
-            icon: LucideIcons.alertCircle,
-          );
-        }
-      },
-      builder: (context, candidate, rejected) => LongPressDraggable<String>(
-        data: 'note:${meta.id}',
-        delay: const Duration(milliseconds: 300),
-        hapticFeedbackOnStart: true,
-        dragAnchorStrategy: pointerDragAnchorStrategy,
-        feedbackOffset: const Offset(-20, -18),
-        feedback: Material(
+        final feedback = Material(
           color: Colors.transparent,
-          child: _NoteGhost(meta: meta),
-        ),
-        childWhenDragging: Opacity(opacity: 0.28, child: layered),
-        onDragStarted: () {
+          child: _NoteGhost(meta: meta, width: constraints.maxWidth),
+        );
+
+        void onDragStarted() {
           // 只冻结顺序，不切换排序模式：切换会重建列表、打断拖动。
           state.prepareManualOrder();
-        },
-        onDragEnd: (_) => _clearHover(),
-        child: layered,
-      ),
+          widget.onDragStart?.call(meta.id);
+        }
+
+        void onDragEnd(DraggableDetails details) =>
+            widget.onDragEnd?.call(meta.id, details.wasAccepted);
+
+        // 桌面上用鼠标拖东西，不应该先按住不动 300ms；
+        // 300ms 长按只留给触屏，用来和列表滚动区分开。
+        final desktop = const {
+          TargetPlatform.windows,
+          TargetPlatform.linux,
+          TargetPlatform.macOS,
+        }.contains(Theme.of(context).platform);
+
+        if (desktop) {
+          return Draggable<String>(
+            data: 'note:${meta.id}',
+            feedback: feedback,
+            childWhenDragging: const SizedBox.shrink(),
+            onDragStarted: onDragStarted,
+            onDragEnd: onDragEnd,
+            child: card,
+          );
+        }
+        return LongPressDraggable<String>(
+          data: 'note:${meta.id}',
+          delay: const Duration(milliseconds: 300),
+          hapticFeedbackOnStart: true,
+          feedback: feedback,
+          childWhenDragging: const SizedBox.shrink(),
+          onDragStarted: onDragStarted,
+          onDragEnd: onDragEnd,
+          child: card,
+        );
+      },
     );
   }
 
@@ -1047,34 +1310,6 @@ class _NoteCardState extends State<NoteCard> {
   }
 }
 
-class _DropLine extends StatelessWidget {
-  const _DropLine();
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppPalette.of(context);
-    return Row(
-      children: [
-        Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(color: c.accent, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 4),
-        Expanded(
-          child: Container(
-            height: 2,
-            decoration: BoxDecoration(
-              color: c.accent,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 /// 英文文案。键是界面里的中文原文，值是对应的英文。
 const Map<String, String> _en = <String, String>{
   // 顶部标题与说明
@@ -1120,8 +1355,8 @@ const Map<String, String> _en = <String, String>{
   // 卡片
   '无题': 'Untitled',
   '还没有写下正文': 'No text yet',
-  '只能在同一天里调整顺序':
-      'You can only reorder notes within the same day',
+  '同一天、同样置顶状态的笔记才能调整顺序':
+      'Only notes from the same day with the same pin state can be reordered',
   // 右键菜单
   '取消置顶': 'Unpin',
   '置顶': 'Pin',

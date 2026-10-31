@@ -449,6 +449,8 @@ class AppState extends ChangeNotifier {
     final target = notes[targetIndex];
     if (source.isTrashed || target.isTrashed) return false;
     if (source.day != target.day) return false;
+    // 置顶的笔记在列表里永远排在最前，跨过这条界线调序不会生效。
+    if (source.pinned != target.pinned) return false;
     // 没有手动顺序时先把眼前看到的顺序冻结下来，拖完才不会跳。
     prepareManualOrder();
 
@@ -469,9 +471,11 @@ class AppState extends ChangeNotifier {
     }
     sort = 'manual';
     settings.sort = 'manual';
+    // 先把新顺序推给界面，再落盘：拖拽松手时列表要停在预览的位置，
+    // 不能先闪回旧顺序再跳一次。
+    _notify();
     await store.persistLibrary(notes);
     await store.saveSettings(settings);
-    _notify();
     return true;
   }
 
