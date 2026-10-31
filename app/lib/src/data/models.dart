@@ -137,6 +137,7 @@ class NoteMeta {
     this.favorite = false,
     this.deletedAt,
     this.words = 0,
+    this.writingSeconds = 0,
     this.folderId,
     this.sortOrder = 0,
     required this.day,
@@ -155,6 +156,9 @@ class NoteMeta {
   DateTime updatedAt;
   DateTime? deletedAt;
   int words;
+
+  /// 真正动笔的时长（秒），停顿超过一分钟不计入。见 [EditorSession]。
+  int writingSeconds;
   String day;
   String? folderId;
   int sortOrder;
@@ -176,6 +180,7 @@ class NoteMeta {
         'updatedAt': updatedAt.toIso8601String(),
         'deletedAt': deletedAt?.toIso8601String(),
         'words': words,
+        'writingSeconds': writingSeconds,
         'day': day,
         'folderId': folderId,
         'sortOrder': sortOrder,
@@ -199,6 +204,7 @@ class NoteMeta {
             ? null
             : DateTime.tryParse(j['deletedAt'] as String),
         words: (j['words'] as int?) ?? 0,
+        writingSeconds: (j['writingSeconds'] as int?) ?? 0,
         day: (j['day'] as String?) ?? dayKey(DateTime.now()),
         folderId: j['folderId'] as String?,
         sortOrder: (j['sortOrder'] as int?) ?? 0,
@@ -217,6 +223,7 @@ class NoteMeta {
     DateTime? deletedAt,
     bool clearDeletedAt = false,
     int? words,
+    int? writingSeconds,
     String? day,
     String? folderId,
     bool clearFolder = false,
@@ -236,6 +243,7 @@ class NoteMeta {
         updatedAt: updatedAt ?? this.updatedAt,
         deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
         words: words ?? this.words,
+        writingSeconds: writingSeconds ?? this.writingSeconds,
         day: day ?? this.day,
         folderId: clearFolder ? null : (folderId ?? this.folderId),
         sortOrder: sortOrder ?? this.sortOrder,
@@ -299,6 +307,7 @@ class Note {
     this.favorite = false,
     this.deletedAt,
     this.words = 0,
+    this.writingSeconds = 0,
     this.folderId,
     this.sortOrder = 0,
     required this.day,
@@ -320,6 +329,9 @@ class Note {
   DateTime updatedAt;
   DateTime? deletedAt;
   int words;
+
+  /// 真正动笔的时长（秒），停顿超过一分钟不计入。
+  int writingSeconds;
   String day;
   String? folderId;
   int sortOrder;
@@ -341,6 +353,7 @@ class Note {
         updatedAt: updatedAt,
         deletedAt: deletedAt,
         words: words,
+        writingSeconds: writingSeconds,
         day: day,
         folderId: folderId,
         sortOrder: sortOrder,
@@ -364,6 +377,7 @@ class Note {
         updatedAt: meta.updatedAt,
         deletedAt: meta.deletedAt,
         words: meta.words,
+        writingSeconds: meta.writingSeconds,
         day: meta.day,
         folderId: meta.folderId,
         sortOrder: meta.sortOrder,
@@ -395,6 +409,7 @@ class Note {
             ? null
             : DateTime.tryParse(j['deletedAt'] as String),
         words: (j['words'] as int?) ?? 0,
+        writingSeconds: (j['writingSeconds'] as int?) ?? 0,
         day: (j['day'] as String?) ?? dayKey(DateTime.now()),
         folderId: j['folderId'] as String?,
         sortOrder: (j['sortOrder'] as int?) ?? 0,
@@ -434,12 +449,34 @@ class Snapshot {
       );
 }
 
+/// 思考强度：决定给模型的输出预算、温度，也决定界面上的默认语气。
+///
+/// 很多「思考型」模型会把一部分预算花在推理上，预算给小了就会只返回思考、
+/// 没有正文。这里给三档，由用户自己选，而不是藏在代码里。
+enum AiThinking {
+  fast('fast', 900, 0.4),
+  balanced('balanced', 2000, 0.7),
+  deep('deep', 4000, 0.9);
+
+  const AiThinking(this.key, this.maxTokens, this.temperature);
+
+  final String key;
+  final int maxTokens;
+  final double temperature;
+
+  static AiThinking fromKey(String? key) => values.firstWhere(
+        (level) => level.key == key,
+        orElse: () => balanced,
+      );
+}
+
 class AiSettings {
   AiSettings({
     this.enabled = false,
     this.baseUrl = 'https://api.deepseek.com/v1',
     this.apiKey = '',
     this.model = 'deepseek-chat',
+    this.thinking = 'balanced',
   });
 
   bool enabled;
@@ -447,11 +484,17 @@ class AiSettings {
   String apiKey;
   String model;
 
+  /// 'fast' / 'balanced' / 'deep'，见 [AiThinking]。
+  String thinking;
+
+  AiThinking get thinkingLevel => AiThinking.fromKey(thinking);
+
   Map<String, dynamic> toJson() => {
         'enabled': enabled,
         'baseUrl': baseUrl,
         'apiKey': apiKey,
         'model': model,
+        'thinking': thinking,
       };
 
   factory AiSettings.fromJson(Map<String, dynamic>? j) => AiSettings(
@@ -459,6 +502,7 @@ class AiSettings {
         baseUrl: (j?['baseUrl'] as String?) ?? 'https://api.deepseek.com/v1',
         apiKey: (j?['apiKey'] as String?) ?? '',
         model: (j?['model'] as String?) ?? 'deepseek-chat',
+        thinking: (j?['thinking'] as String?) ?? 'balanced',
       );
 
   bool get configured => enabled && apiKey.trim().isNotEmpty;
@@ -499,6 +543,34 @@ class WebDavSettings {
       enabled && url.trim().isNotEmpty && username.trim().isNotEmpty;
 }
 
+/// 用户自己导入的字体。文件放在数据目录的 `fonts/` 下，
+/// [id] 同时作为运行时注册的字体族名，写进正文的 `font` 属性里。
+class CustomFont {
+  CustomFont({
+    required this.id,
+    required this.name,
+    required this.file,
+  });
+
+  final String id;
+  String name;
+  String file;
+
+  bool get valid => id.trim().isNotEmpty && file.trim().isNotEmpty;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'file': file,
+      };
+
+  factory CustomFont.fromJson(Map<String, dynamic>? j) => CustomFont(
+        id: (j?['id'] as String?) ?? '',
+        name: (j?['name'] as String?) ?? '',
+        file: (j?['file'] as String?) ?? '',
+      );
+}
+
 class AppSettings {
   AppSettings({
     this.themeMode = ThemeMode.light,
@@ -519,6 +591,7 @@ class AppSettings {
     this.lastView = 'today',
     this.sort = 'updated',
     this.savedColors = const [],
+    this.customFonts = const [],
     this.ai,
     this.webdav,
   });
@@ -543,6 +616,7 @@ class AppSettings {
   String lastView;
   String sort;
   List<String> savedColors;
+  List<CustomFont> customFonts;
   AiSettings? ai;
   WebDavSettings? webdav;
 
@@ -568,6 +642,7 @@ class AppSettings {
         'lastView': lastView,
         'sort': sort,
         'savedColors': savedColors,
+        'customFonts': customFonts.map((e) => e.toJson()).toList(),
         'ai': aiSettings.toJson(),
         'webdav': webdavSettings.toJson(),
       };
@@ -598,6 +673,11 @@ class AppSettings {
                 ?.whereType<String>()
                 .toList(growable: true) ??
             <String>[],
+        customFonts: ((j['customFonts'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => CustomFont.fromJson(e.cast<String, dynamic>()))
+            .where((e) => e.valid)
+            .toList(growable: true),
         ai: j['ai'] is Map<String, dynamic>
             ? AiSettings.fromJson(j['ai'] as Map<String, dynamic>)
             : null,

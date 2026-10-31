@@ -12,6 +12,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/library_export.dart';
+import '../services/ai_service.dart';
 import '../services/webdav_service.dart';
 
 import '../core/format.dart';
@@ -20,6 +21,7 @@ import '../core/motion.dart';
 import '../core/theme.dart';
 import '../core/theme_reveal.dart';
 import '../core/ui.dart';
+import '../data/models.dart';
 import '../state/app_state.dart';
 import 'editor/color_picker.dart';
 import 'editor/huazi.dart';
@@ -571,7 +573,7 @@ class SettingsPage extends StatelessWidget {
                 subtitle: _t('一个安静的本地写作空间'),
                 children: [
                   Text(
-                    _t('此记 · ThisNote 1.1.1'),
+                    _t('此记 · ThisNote 1.2.0'),
                     style: TextStyle(
                       fontFamily: 'NotoSansSC',
                       fontSize: 12,
@@ -591,6 +593,31 @@ class SettingsPage extends StatelessWidget {
                       height: 1.8,
                       color: c.inkMuted,
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      SoftButton(
+                        icon: LucideIcons.star,
+                        label: _t('GitHub · 点个 Star'),
+                        dense: true,
+                        onPressed: () => launchUrl(
+                          Uri.parse('https://github.com/cookernine91263/ThisNote'),
+                          mode: LaunchMode.externalApplication,
+                        ),
+                      ),
+                      SoftButton(
+                        icon: LucideIcons.play,
+                        label: _t('B 站 · 看它怎么长出来'),
+                        dense: true,
+                        onPressed: () => launchUrl(
+                          Uri.parse('https://space.bilibili.com/628622329'),
+                          mode: LaunchMode.externalApplication,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   Wrap(
@@ -618,6 +645,14 @@ class SettingsPage extends StatelessWidget {
                         label: _t('快捷键'),
                         dense: true,
                         onPressed: () => _showShortcuts(context),
+                      ),
+                      SoftButton(
+                        icon: LucideIcons.compass,
+                        label: _t('重新查看引导'),
+                        dense: true,
+                        onPressed: () => state.updateSettings(
+                          (s) => s.onboardingDone = false,
+                        ),
                       ),
                     ],
                   ),
@@ -1033,6 +1068,45 @@ class _Choice extends StatelessWidget {
   }
 }
 
+class _PillChoice extends StatelessWidget {
+  const _PillChoice({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: Motion.fast,
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? c.accentSoft : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? c.accent.withValues(alpha: 0.42) : c.line,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'NotoSansSC',
+            fontSize: 11,
+            color: selected ? c.accent : c.inkSoft,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SliderSetting extends StatelessWidget {
   const _SliderSetting({
     required this.label,
@@ -1315,6 +1389,7 @@ class _AiCardState extends State<_AiCard> {
       TextEditingController(text: widget.state.settings.aiSettings.model);
   late final TextEditingController _key =
       TextEditingController(text: widget.state.settings.aiSettings.apiKey);
+  bool _testing = false;
 
   @override
   void dispose() {
@@ -1324,10 +1399,42 @@ class _AiCardState extends State<_AiCard> {
     super.dispose();
   }
 
+  Future<void> _test(BuildContext context) async {
+    if (_testing) return;
+    final ai = widget.state.settings.aiSettings;
+    if (!ai.configured) {
+      showToast(context, _t('请先启用 AI 并填写 API Key'));
+      return;
+    }
+    setState(() => _testing = true);
+    try {
+      final (ms, _) = await AiService(ai).ping();
+      if (!context.mounted) return;
+      showToast(
+        context,
+        _t('连通成功 · {ms} ms · {model}', {
+          'ms': ms,
+          'model': ai.model.trim().isEmpty ? 'deepseek-chat' : ai.model.trim(),
+        }),
+        icon: LucideIcons.check,
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      showToast(
+        context,
+        _t('连通失败：{error}', {'error': '$e'}),
+        icon: LucideIcons.alertCircle,
+      );
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     final ai = widget.state.settings.aiSettings;
+    final level = ai.thinkingLevel;
     return _Card(
       icon: LucideIcons.sparkles,
       title: _t('AI 助手'),
@@ -1359,6 +1466,65 @@ class _AiCardState extends State<_AiCard> {
           obscure: true,
           onChanged: (v) => widget.state.updateSettings((s) => s.aiSettings.apiKey = v),
         ),
+        const SizedBox(height: 2),
+        _RowLabel(label: _t('思考强度')),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final entry in const [
+              (AiThinking.fast, '快'),
+              (AiThinking.balanced, '标准'),
+              (AiThinking.deep, '深入'),
+            ])
+              _PillChoice(
+                label: _t(entry.$2),
+                selected: ai.thinkingLevel == entry.$1,
+                onTap: () => widget.state.updateSettings(
+                  (s) => s.aiSettings.thinking = entry.$1.key,
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _t(switch (level) {
+            AiThinking.fast => '快：更短的时间与预算，适合润色、改错和短句。',
+            AiThinking.balanced => '标准：日常改写与续写的默认档。',
+            AiThinking.deep => '深入：给模型更多预算，适合续写、提纲和长文。',
+          }),
+          style: TextStyle(
+            fontFamily: 'NotoSansSC',
+            fontSize: 9.5,
+            height: 1.6,
+            color: c.inkMuted,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            SoftButton(
+              icon: _testing ? LucideIcons.loaderCircle : LucideIcons.zap,
+              label: _t(_testing ? '正在测试…' : '测试连通性'),
+              dense: true,
+              onPressed: _testing ? null : () => _test(context),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                _t('只发一句「收到」，用来确认地址、模型和 Key 都能用。'),
+                style: TextStyle(
+                  fontFamily: 'NotoSansSC',
+                  fontSize: 9,
+                  height: 1.5,
+                  color: c.inkMuted,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
         Align(
           alignment: Alignment.centerLeft,
           child: Text(
@@ -1794,7 +1960,7 @@ const Map<String, String> _en = <String, String>{
       'A backup is a zip of text, images and version history. Restoring overwrites current data, so a fresh backup is made first.',
   '关于此记': 'About ThisNote',
   '一个安静的本地写作空间': 'A quiet local writing space',
-  '此记 · ThisNote 1.1.1': 'ThisNote 1.1.1',
+  '此记 · ThisNote 1.2.0': 'ThisNote 1.2.0',
   '内置字体：思源黑体 / 思源宋体 / 霞鹜文楷 /\n'
           '马善政毛笔 / 站酷小薇，均为 SIL Open Font License。\n'
           '中、英、日与假名可在同一页里混排。':
@@ -1840,6 +2006,26 @@ const Map<String, String> _en = <String, String>{
       'Works with OpenAI-compatible APIs; only the text you select is sent, when you tap Polish or Continue.',
   '接口地址': 'Endpoint',
   '模型': 'Model',
+  '思考强度': 'Thinking level',
+  '快': 'Fast',
+  '标准': 'Standard',
+  '深入': 'Deep',
+  '快：更短的时间与预算，适合润色、改错和短句。':
+      'Fast: less time and fewer tokens — great for polishing, fixes and short lines.',
+  '标准：日常改写与续写的默认档。':
+      'Standard: the default for everyday rewriting and continuation.',
+  '深入：给模型更多预算，适合续写、提纲和长文。':
+      'Deep: a bigger budget for continuation, outlines and long pieces.',
+  '测试连通性': 'Test connection',
+  '正在测试…': 'Testing…',
+  '连通成功 · {ms} ms · {model}': 'Connected · {ms} ms · {model}',
+  '连通失败：{error}': 'Connection failed: {error}',
+  '请先启用 AI 并填写 API Key': 'Enable AI and enter an API key first',
+  '只发一句「收到」，用来确认地址、模型和 Key 都能用。':
+      'Sends a single word — enough to confirm the endpoint, model and key work.',
+  'GitHub · 点个 Star': 'GitHub · Leave a star',
+  'B 站 · 看它怎么长出来': 'Bilibili · See how it grows',
+  '重新查看引导': 'Replay the tour',
   'Key 仅保存在本机设置文件中。':
       'The key is stored only in the local settings file.',
   'WebDAV 同步': 'WebDAV sync',

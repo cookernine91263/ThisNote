@@ -49,6 +49,11 @@ const Map<String, String> _en = <String, String>{
   '生成时可以先读；完成后会请你预览，确认后才写进正文。':
       'You can read along as it writes; you will preview the result before it is added to the note.',
   'AI 的建议 · {action}': 'AI suggestion · {action}',
+  '思考强度：{level} · 可在设置里调整':
+      'Thinking: {level} · adjust in Settings',
+  '快': 'Fast',
+  '标准': 'Standard',
+  '深入': 'Deep',
   '放弃': 'Discard',
   '替换选中': 'Replace selection',
   '插入': 'Insert',
@@ -136,7 +141,7 @@ Future<void> showAiSheet(BuildContext context, EditorSession session) async {
   final action = await showDialog<AiAction>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.2),
-    builder: (context) => const _AiMenuDialog(),
+    builder: (context) => _AiMenuDialog(thinking: ai.thinkingLevel),
   );
   if (action == null || !context.mounted) return;
   await _runAction(context, state, session, action);
@@ -313,7 +318,9 @@ Future<void> _runAction(
 }
 
 class _AiMenuDialog extends StatelessWidget {
-  const _AiMenuDialog();
+  const _AiMenuDialog({required this.thinking});
+
+  final AiThinking thinking;
 
   @override
   Widget build(BuildContext context) {
@@ -429,6 +436,27 @@ class _AiMenuDialog extends StatelessWidget {
                     ),
                   ),
                 ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(LucideIcons.gauge, size: 11, color: c.inkMuted),
+                  const SizedBox(width: 5),
+                  Text(
+                    _t('思考强度：{level} · 可在设置里调整', {
+                      'level': switch (thinking) {
+                        AiThinking.fast => _t('快'),
+                        AiThinking.balanced => _t('标准'),
+                        AiThinking.deep => _t('深入'),
+                      },
+                    }),
+                    style: TextStyle(
+                      fontFamily: 'NotoSansSC',
+                      fontSize: 9,
+                      color: c.inkMuted,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),

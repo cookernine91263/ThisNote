@@ -17,11 +17,7 @@ void main() {
         {'insert': '\n'},
         {
           'insert': '落笔即心安',
-          'attributes': {
-            'font': 'WenKai',
-            'size': 'large',
-            'color': '#A84637',
-          },
+          'attributes': {'font': 'WenKai', 'size': 'large', 'color': '#A84637'},
         },
         {'insert': '\n'},
       ],
@@ -55,8 +51,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final boundary = key.currentContext!.findRenderObject()
-        as RenderRepaintBoundary;
+    final boundary =
+        key.currentContext!.findRenderObject() as RenderRepaintBoundary;
     final result = await tester.runAsync(() async {
       final image = await boundary.toImage(pixelRatio: 3);
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -71,5 +67,67 @@ void main() {
     expect(data!.lengthInBytes, greaterThan(10000));
     Directory('test_out').createSync(recursive: true);
     File('test_out/note_card.png').writeAsBytesSync(data.buffer.asUint8List());
+  });
+
+  testWidgets('每一段都能量到位置，分页靠这份坐标', (tester) async {
+    final note = Note(
+      id: 'paged',
+      title: '一封很长的信',
+      delta: [
+        for (var i = 1; i <= 6; i++) ...[
+          {'insert': '第 $i 段：写一点足够长的话，好让这一行走完一整行。'},
+          {'insert': '\n'},
+        ],
+        {
+          'insert': '结尾',
+          'attributes': {'header': 2},
+        },
+        {'insert': '\n'},
+      ],
+      text: '长文',
+      kind: NoteKind.essay,
+      createdAt: DateTime(2026, 10, 31),
+      updatedAt: DateTime(2026, 10, 31),
+      words: 120,
+      day: '2026-10-31',
+    );
+
+    final keys = NoteImageLineKeys();
+    final boundaryKey = GlobalKey();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: RepaintBoundary(
+              key: boundaryKey,
+              child: NoteImageCard(
+                note: note,
+                theme: NoteImageTheme.paper,
+                width: 420,
+                lineKeys: keys,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(keys.count, greaterThan(3));
+    final boundary =
+        boundaryKey.currentContext!.findRenderObject() as RenderBox;
+    double? previous;
+    for (var i = 0; i < keys.count; i++) {
+      final box = keys.at(i).currentContext!.findRenderObject() as RenderBox;
+      final top = box.localToGlobal(Offset.zero, ancestor: boundary).dy;
+      expect(top, greaterThanOrEqualTo(0));
+      if (previous != null) {
+        expect(top, greaterThan(previous));
+      }
+      previous = top;
+    }
+    // 第一段之后才有可用的断点，所以卡片高度一定大于最后一段的起点。
+    expect(boundary.size.height, greaterThan(previous!));
   });
 }

@@ -30,6 +30,11 @@ const _en = <String, String>{
   '{n} 天前': '{n} days ago',
   '不到 1 分钟': 'under a minute',
   '约 {n} 分钟': 'about {n} min',
+  '写了不到 1 分钟': 'wrote for under a minute',
+  '写了 {n} 分钟': 'wrote for {n} min',
+  '写了 {n} 小时': 'wrote for {n} h',
+  '写了 {h} 小时 {m} 分': 'wrote for {h} h {m} min',
+  '阅读约 {n} 分钟': 'about {n} min to read',
 };
 
 String two(int n) => n.toString().padLeft(2, '0');
@@ -120,6 +125,22 @@ String readingTime(int words) {
   final minutes = (words / 300).ceil();
   if (minutes <= 0) return tr('不到 1 分钟', null, _en);
   return tr('约 {n} 分钟', {'n': minutes}, _en);
+}
+
+/// 实际写作时长。没有记录过动笔时间的旧笔记退回阅读时长。
+String writingTimeLabel(int seconds, int words) {
+  if (seconds <= 0) {
+    final minutes = (words / 300).ceil();
+    if (minutes <= 0) return tr('不到 1 分钟', null, _en);
+    return tr('阅读约 {n} 分钟', {'n': minutes}, _en);
+  }
+  if (seconds < 60) return tr('写了不到 1 分钟', null, _en);
+  final minutes = seconds ~/ 60;
+  if (minutes < 60) return tr('写了 {n} 分钟', {'n': minutes}, _en);
+  final hours = minutes ~/ 60;
+  final rest = minutes % 60;
+  if (rest == 0) return tr('写了 {n} 小时', {'n': hours}, _en);
+  return tr('写了 {h} 小时 {m} 分', {'h': hours, 'm': rest}, _en);
 }
 
 /// 把颜色转为 Quill 使用的 #RRGGBB

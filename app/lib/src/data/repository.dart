@@ -19,6 +19,7 @@ class NoteStore {
   late Directory notesDir;
   late Directory historyDir;
   late Directory assetsDir;
+  late Directory fontsDir;
 
   bool _initialized = false;
 
@@ -76,7 +77,8 @@ class NoteStore {
     notesDir = Directory(p.join(root.path, 'notes'));
     historyDir = Directory(p.join(root.path, 'history'));
     assetsDir = Directory(p.join(root.path, 'assets'));
-    for (final d in [root, notesDir, historyDir, assetsDir]) {
+    fontsDir = Directory(p.join(root.path, 'fonts'));
+    for (final d in [root, notesDir, historyDir, assetsDir, fontsDir]) {
       if (!await d.exists()) await d.create(recursive: true);
     }
     _initialized = true;
@@ -239,6 +241,28 @@ class NoteStore {
     return 'assets/$name';
   }
 
+  /// 保存用户导入的字体文件，返回 `fonts/` 下的文件名。
+  Future<String> saveFont(Uint8List bytes, String ext) async {
+    final safeExt = ext.replaceAll('.', '').toLowerCase();
+    final name =
+        '${DateTime.now().microsecondsSinceEpoch}_${bytes.length}.$safeExt';
+    await File(p.join(fontsDir.path, name)).writeAsBytes(bytes, flush: true);
+    return name;
+  }
+
+  String resolveFont(String file) => p.join(fontsDir.path, file);
+
+  Future<void> deleteFont(String file) async {
+    final f = File(resolveFont(file));
+    if (await f.exists()) {
+      try {
+        await f.delete();
+      } catch (_) {
+        // 文件被占用时先留着，下次启动不会再加载它。
+      }
+    }
+  }
+
   String resolveAsset(String rel) {
     if (rel.startsWith('assets/')) return p.join(root.path, rel);
     return rel;
@@ -308,6 +332,7 @@ class NoteStore {
     await addDirectory(notesDir, 'notes');
     await addDirectory(assetsDir, 'assets');
     await addDirectory(historyDir, 'history');
+    await addDirectory(fontsDir, 'fonts');
     if (await _libraryFile.exists()) {
       final data = await _libraryFile.readAsBytes();
       archive.addFile(ArchiveFile('library.json', data.length, data));
@@ -349,6 +374,7 @@ class NoteStore {
         count++;
       } else if (name.startsWith('notes/') ||
           name.startsWith('assets/') ||
+          name.startsWith('fonts/') ||
           name.startsWith('history/')) {
         final out = File(p.join(root.path, name));
         await out.create(recursive: true);

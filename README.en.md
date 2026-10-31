@@ -3,7 +3,7 @@
 > A quiet sheet of paper for diaries, notes and essays.  
 > Local-first · native Windows / Android · built for writing in Chinese and English
 
-[中文](README.md) · **English**
+[中文](README.md) · **English** · [GitHub](https://github.com/cookernine91263/ThisNote) · [Bilibili](https://space.bilibili.com/628622329)
 
 ThisNote is a desktop and mobile writing space that works **entirely offline**. It brings Word-style formatting, the sense of time you get from a diary app, and a little Eastern restraint into one calm screen.
 
@@ -30,11 +30,12 @@ The interface can be switched between **中文 and English** at any time — on 
 - **Paste a screenshot directly**: when the clipboard holds only an image, use “Paste image” in the toolbar (some IMEs swallow Ctrl/⌘ + V, so there is an explicit button too)
 - **Drag & drop**: drop images into the window to insert them; drop `.md` / `.txt` files to import them as notes
 - Six bundled open-source fonts: Noto Sans SC, Noto Serif SC, LXGW WenKai, Ma Shan Zheng, ZCOOL XiaoWei and Noto Sans SC Light; switch and preview them from the toolbar
+- **Import your own fonts**: pick a TTF / OTF from this machine; it is copied into the data folder and still there after a restart (this device only)
+- **Writing time**: counted from actual typing, pauses longer than a minute are skipped; older notes get a conservative estimate from creation to last edit
 - **Custom color wheel**: hue/lightness wheel, built-in swatches and saved colors; both text color and highlight color are yours to pick
 - Auto-save, a version snapshot every five minutes (up to 40), undo / redo
 - Focus mode, paper grain, dark mode, and adjustable UI scale / body size / line height / paragraph spacing / letter spacing / page width / accent color
 - Light/dark switching expands as a circle from the point you clicked, without scaling the text
-- Sidebar transition: “slide in” or “smooth”; also selectable during onboarding
 - Nested folders with drag-to-sort; long-press a note card to drag it into a folder or reorder notes from the same day
 - Deleting a note collapses its card and offers an “Undo” at the bottom for five seconds
 - Command palette (Ctrl/⌘ + K): search any note, run formatting commands, find / outline / tidy typography / export
@@ -59,7 +60,7 @@ The interface can be switched between **中文 and English** at any time — on 
 
 - **Word (.docx)**: keeps headings, bold/italic, colors, lists, quotes, images and links
 - **PDF**: A4 layout with embedded Chinese, English and Japanese fonts
-- **PNG long image**: re-typeset as a keepsake page, with four paper colors, date/tag toggles and 3× resolution
+- **PNG long image / pages**: re-typeset as a keepsake page with four paper colors, date/tag toggles and 3× resolution; for a long piece you choose how many images to make and where each one ends (breaks can be nudged per paragraph), so social apps cannot blur it into mush
 - **HTML / Markdown / TXT**
 - Full zip backup (text, images, version history) with one-click restore
 - **Export the whole library as a Markdown folder** (images and `assets/` included)
@@ -70,6 +71,9 @@ The interface can be switched between **中文 and English** at any time — on 
 
 - Any OpenAI-compatible endpoint (DeepSeek / OpenAI / a local gateway)
 - Polish, expand, condense, continue, title, outline, English/Japanese translation
+- **Thinking level**: Fast / Standard / Deep — you decide how much time and budget the model gets
+- **One-click connection test**: sends a single word, so you instantly know whether the endpoint, model and key are right
+- Friendly to reasoning models: a reasoning-only reply or a gateway that ignores SSE falls back to a non-streaming retry
 - **Generate first, preview, then insert** — it never edits your draft behind your back
 - Streaming output: read as it is written, stop at any time
 - The API key stays on your machine; selected text is sent only when you click an AI action
@@ -94,18 +98,30 @@ The interface can be switched between **中文 and English** at any time — on 
 | --- | --- |
 | ![Command palette](docs/screenshots/en/palette.png) | ![Settings](docs/screenshots/en/settings.png) |
 
-The first launch includes a short tour, with a language switch in the corner:
+The first launch includes a short tour, with a language switch in the corner and a small “star it on GitHub” door on the last page (you can replay it any time from Settings → About):
 
 | 中文 | English |
 | --- | --- |
 | ![Onboarding](docs/screenshots/onboarding.png) | ![Onboarding in English](docs/screenshots/onboarding-en.png) |
 
+## Give ThisNote an echo
+
+It does not phone home, it does not pop up, and it will never ask you to subscribe — so it really does live on you.
+
+If it helped you write a few honest lines, leave it a ⭐ on [GitHub](https://github.com/cookernine91263/ThisNote):
+(whispering: one little star would genuinely make my day ♡)
+
+You can also find me on [Bilibili](https://space.bilibili.com/628622329) and watch this little writing space grow.
+Say hi in the comments — I will answer.
+
+> Just keep writing — that is already enough. Time will do the rest.
+
 ## Installers
 
 Already built in this environment:
 
-- `dist/ThisNote-Setup-1.1.1.exe` (Windows x64 installer)
-- `dist/ThisNote-Android-1.1.1-arm64.apk` (Android 8.0+ arm64, signed)
+- `dist/ThisNote-Setup-1.2.0.exe` (Windows x64 installer)
+- `dist/ThisNote-Android-1.2.0-arm64.apk` (Android 8.0+ arm64, signed)
 - `dist/SHA256SUMS.txt`
 
 See `dist/安装说明.txt` for installation notes.
@@ -165,7 +181,7 @@ Installer:
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" ..\installer\ThisNote.iss
-# output: dist/ThisNote-Setup-1.1.1.exe
+# output: dist/ThisNote-Setup-1.2.0.exe
 ```
 
 ### Android

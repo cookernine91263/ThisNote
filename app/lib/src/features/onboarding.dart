@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/i18n.dart';
 import '../core/motion.dart';
@@ -8,6 +9,16 @@ import '../core/theme.dart';
 import '../core/ui.dart';
 import '../state/app_state.dart';
 import 'splash.dart';
+
+/// 项目主页。引导页、设置页和 README 用的是同一个地址。
+const thisNoteRepoUrl = 'https://github.com/cookernine91263/ThisNote';
+
+Future<void> _openRepo() async {
+  await launchUrl(
+    Uri.parse(thisNoteRepoUrl),
+    mode: LaunchMode.externalApplication,
+  );
+}
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -25,9 +36,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     '日记、随笔、作文，都在同一张安静的纸上。\n不必完美，先让第一句话落下。':
         'Diary, note, essay — all on the same quiet sheet.\nIt doesn\'t have to be perfect. Just let the first line land.',
     '写一句': 'Write a line',
-    '选一种翻页手感': 'Choose how pages turn',
-    'PPT 里的「平滑」被搬到了这里：\n旧页收拢、新页展开；也可以选轻快的滑入。':
-        'The “Morph” transition from PowerPoint, brought here:\nthe old page folds away, the new one unfolds. Or pick a light slide-in.',
+    '把日子连成一条线': 'Link the days together',
+    '日历里能翻回任何一天：\n写作热力、心情与天气、那年今日，都还在。':
+        'The calendar walks back to any day:\nwriting heat, mood and weather, and “On this day”.',
     '继续': 'Continue',
     '写得好，也排得美': 'Write well, set it beautifully',
     '像 Word 一样加粗、倾斜、变细、配色；\n选中一句话，点一下花字，让它郑重一点。':
@@ -40,6 +51,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     '下一步': 'Next',
     '跳过': 'Skip',
     '此记 · 本地优先的写作空间': 'ThisNote · A local-first writing space',
+    '喜欢此记？去 GitHub 点个 Star': 'Enjoying ThisNote? Star it on GitHub',
+    '如果它帮你安静地写下了几句话，就给它一颗小星星吧 ♡':
+        'If it helped you write a few quiet lines, leave it a little star ♡',
   };
 
   static const _pages = [
@@ -50,9 +64,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       '写一句',
     ),
     (
-      LucideIcons.move3d,
-      '选一种翻页手感',
-      'PPT 里的「平滑」被搬到了这里：\n旧页收拢、新页展开；也可以选轻快的滑入。',
+      LucideIcons.calendarDays,
+      '把日子连成一条线',
+      '日历里能翻回任何一天：\n写作热力、心情与天气、那年今日，都还在。',
       '继续',
     ),
     (
@@ -72,10 +86,73 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _finish() async {
     final state = context.read<AppState>();
     await state.updateSettings((s) => s.onboardingDone = true);
+    // 首次启动时把欢迎页打开；从设置里「重新查看引导」回来时，
+    // 用户手里可能正开着别的笔记，不要把他拽走。
+    if (state.current != null) return;
     final welcome = state.notes.where((n) => n.id == 'seed-welcome');
     if (welcome.isNotEmpty) {
       await state.openNote(welcome.first.id);
     }
+  }
+
+  /// 最后一页的「点个 Star」：不吵，只是把门留在那儿。
+  Widget _starPlea(BuildContext context) {
+    final c = AppPalette.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        HoverBuilder(
+          builder: (context, hovered, t) => GestureDetector(
+            onTap: _openRepo,
+            child: AnimatedContainer(
+              duration: Motion.fast,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(
+                color: hovered
+                    ? c.accentSoft
+                    : c.surface.withValues(alpha: 0.72),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: hovered ? c.accent.withValues(alpha: 0.45) : c.line,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    LucideIcons.star,
+                    size: 14,
+                    color: hovered ? c.accent : c.inkSoft,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    tr('喜欢此记？去 GitHub 点个 Star', null, _en),
+                    style: TextStyle(
+                      fontFamily: 'NotoSansSC',
+                      fontSize: 11.5,
+                      color: hovered ? c.accent : c.inkSoft,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(LucideIcons.arrowUpRight, size: 12, color: c.inkMuted),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          tr('如果它帮你安静地写下了几句话，就给它一颗小星星吧 ♡', null, _en),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: 'NotoSansSC',
+            fontSize: 9,
+            height: 1.6,
+            color: c.inkMuted.withValues(alpha: 0.85),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -186,6 +263,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         ],
                       ),
                     ),
+                    if (last) ...[
+                      const SizedBox(height: 18),
+                      _starPlea(context),
+                    ],
                     const Spacer(),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,

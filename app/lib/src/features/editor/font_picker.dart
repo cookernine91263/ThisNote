@@ -1,10 +1,14 @@
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
+import '../../data/models.dart';
+import '../../state/app_state.dart';
 import 'note_fonts.dart';
 
 /// 文案以中文为源，英文放在 [_en] 里。字体名与描述来自 [noteFonts]，
@@ -24,6 +28,17 @@ const Map<String, String> _en = <String, String>{
   '马善政毛笔 · 一句题目': 'Ma Shan Zheng brush · for one title',
   '站酷小薇 · 雅致的标题': 'ZCOOL XiaoWei · elegant headings',
   '思源细体 · 轻盈的呼吸': 'Noto Sans Light · a light breath',
+  '导入的字体 · 本地文件': 'Imported · local file',
+  '导入字体…': 'Import a font…',
+  'TTF / OTF，只存在本机': 'TTF / OTF, stays on this device',
+  '字体文件': 'Font file',
+  '这个字体文件打不开': 'This font file could not be opened',
+  '已导入「{name}」': 'Imported “{name}”',
+  '移除这个字体？': 'Remove this font?',
+  '用到它的文字会回退到默认字体，字体文件也会从数据目录里删掉。':
+      'Text using it falls back to the default font, and the file is deleted from your data folder.',
+  '移除': 'Remove',
+  '已移除字体': 'Font removed',
 };
 
 String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
@@ -45,10 +60,48 @@ class _FontDialog extends StatelessWidget {
   const _FontDialog({this.current});
   final String? current;
 
+  Future<void> _import(BuildContext context) async {
+    final state = context.read<AppState>();
+    final file = await openFile(
+      acceptedTypeGroups: [
+        XTypeGroup(label: _t('字体文件'), extensions: const ['ttf', 'otf']),
+      ],
+    );
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    final font = await state.importCustomFont(
+      fileName: file.name,
+      bytes: bytes,
+    );
+    if (!context.mounted) return;
+    showToast(
+      context,
+      font == null
+          ? _t('这个字体文件打不开')
+          : _t('已导入「{name}」', {'name': font.name}),
+      icon: font == null ? LucideIcons.alertCircle : LucideIcons.check,
+    );
+  }
+
+  Future<void> _remove(BuildContext context, CustomFont font) async {
+    final ok = await showConfirm(
+      context,
+      title: _t('移除这个字体？'),
+      message: _t('用到它的文字会回退到默认字体，字体文件也会从数据目录里删掉。'),
+      confirmLabel: _t('移除'),
+      danger: true,
+    );
+    if (!ok || !context.mounted) return;
+    await context.read<AppState>().removeCustomFont(font);
+    if (context.mounted) showToast(context, _t('已移除字体'));
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     final size = MediaQuery.sizeOf(context);
+    final state = context.watch<AppState>();
+    final fonts = allNoteFonts(state.settings.customFonts);
     return Dialog(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -117,9 +170,12 @@ class _FontDialog extends StatelessWidget {
                   child: ListView.builder(
                     shrinkWrap: true,
                     padding: const EdgeInsets.fromLTRB(12, 4, 12, 14),
-                    itemCount: noteFonts.length,
+                    itemCount: fonts.length + 1,
                     itemBuilder: (context, index) {
-                      final font = noteFonts[index];
+                      if (index == fonts.length) {
+                        return _ImportRow(onTap: () => _import(context));
+                      }
+                      final font = fonts[index];
                       final active = font.value == current ||
                           (font.value == null &&
                               (current == null ||
@@ -131,6 +187,16 @@ class _FontDialog extends StatelessWidget {
                         onTap: () => Navigator.of(context).pop(
                           font.value ?? '__default__',
                         ),
+                        onDelete: font.custom
+                            ? () {
+                                final matches = state.settings.customFonts
+                                    .where((e) => e.id == font.value)
+                                    .toList(growable: false);
+                                if (matches.isNotEmpty) {
+                                  _remove(context, matches.first);
+                                }
+                              }
+                            : null,
                       );
                     },
                   ),
@@ -149,11 +215,13 @@ class _FontRow extends StatelessWidget {
     required this.font,
     required this.active,
     required this.onTap,
+    this.onDelete,
   });
 
   final NoteFont font;
   final bool active;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -224,6 +292,32 @@ class _FontRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
+                if (onDelete != null) ...[
+                  Tooltip(
+                    message: _t('移除'),
+                    child: HoverBuilder(
+                      builder: (context, hovered, t) => GestureDetector(
+                        onTap: onDelete,
+                        behavior: HitTestBehavior.opaque,
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: hovered ? c.surfaceAlt : Colors.transparent,
+                            borderRadius: BorderRadius.circular(7),
+                          ),
+                          child: Icon(
+                            LucideIcons.trash2,
+                            size: 13,
+                            color: hovered ? c.danger : c.inkMuted,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 AnimatedOpacity(
                   opacity: active ? 1 : 0,
                   duration: const Duration(milliseconds: 120),
@@ -238,6 +332,63 @@ class _FontRow extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// 列表最后一行：从本机挑一个 TTF / OTF。
+class _ImportRow extends StatelessWidget {
+  const _ImportRow({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return HoverBuilder(
+      builder: (context, hovered, t) => GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.fromLTRB(13, 12, 12, 12),
+          decoration: BoxDecoration(
+            color: hovered ? c.accentSoft : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: hovered ? c.accent.withValues(alpha: 0.45) : c.line,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(LucideIcons.plus, size: 15, color: c.accent),
+              const SizedBox(width: 9),
+              Text(
+                _t('导入字体…'),
+                style: TextStyle(
+                  fontFamily: 'NotoSansSC',
+                  fontSize: 12,
+                  color: c.inkSoft,
+                ),
+              ),
+              const Spacer(),
+              Flexible(
+                child: Text(
+                  _t('TTF / OTF，只存在本机'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontFamily: 'NotoSansSC',
+                    fontSize: 8.5,
+                    color: c.inkMuted,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

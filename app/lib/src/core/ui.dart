@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -101,7 +102,10 @@ class PaperSurface extends StatelessWidget {
       child: Stack(
         fit: StackFit.passthrough,
         children: [
-          if (grain) Positioned.fill(child: PaperGrain(color: c.ink, opacity: c.grain)),
+          if (grain)
+            Positioned.fill(
+              child: PaperGrain(color: c.ink, opacity: c.grain),
+            ),
           child,
         ],
       ),
@@ -153,7 +157,8 @@ class _HoverBuilderState extends State<HoverBuilder>
       onExit: (_) => _c.reverse(),
       child: AnimatedBuilder(
         animation: _c,
-        builder: (context, _) => widget.builder(context, _c.value > 0.5, _c.value),
+        builder: (context, _) =>
+            widget.builder(context, _c.value > 0.5, _c.value),
       ),
     );
   }
@@ -187,10 +192,9 @@ class SoftIconButton extends StatelessWidget {
         final bg = active
             ? c.accentSoft
             : hovered
-                ? c.surfaceAlt
-                : Colors.transparent;
-        final fg = color ??
-            (active ? c.accent : (hovered ? c.ink : c.inkSoft));
+            ? c.surfaceAlt
+            : Colors.transparent;
+        final fg = color ?? (active ? c.accent : (hovered ? c.ink : c.inkSoft));
         return AnimatedContainer(
           duration: Motion.fast,
           curve: Motion.enter,
@@ -216,7 +220,10 @@ class SoftIconButton extends StatelessWidget {
             cursor: onPressed == null
                 ? SystemMouseCursors.basic
                 : SystemMouseCursors.click,
-            child: Opacity(opacity: onPressed == null ? 0.38 : 1, child: button),
+            child: Opacity(
+              opacity: onPressed == null ? 0.38 : 1,
+              child: button,
+            ),
           ),
         ),
       ),
@@ -253,22 +260,22 @@ class SoftButton extends StatelessWidget {
         final bg = primary
             ? (hovered ? c.accent : c.ink)
             : active
-                ? c.accentSoft
-                : hovered
-                    ? c.surfaceAlt
-                    : Colors.transparent;
+            ? c.accentSoft
+            : hovered
+            ? c.surfaceAlt
+            : Colors.transparent;
         final fg = primary
             ? c.onAccent
             : active
-                ? c.accent
-                : c.inkSoft;
+            ? c.accent
+            : c.inkSoft;
         final borderColor = primary
             ? Colors.transparent
             : active
-                ? c.accent.withValues(alpha: 0.28)
-                : hovered
-                    ? c.line
-                    : Colors.transparent;
+            ? c.accent.withValues(alpha: 0.28)
+            : hovered
+            ? c.line
+            : Colors.transparent;
         return AnimatedContainer(
           duration: Motion.fast,
           height: dense ? 30 : 36,
@@ -388,7 +395,9 @@ class TagChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     return HoverBuilder(
-      cursor: onTap == null ? SystemMouseCursors.basic : SystemMouseCursors.click,
+      cursor: onTap == null
+          ? SystemMouseCursors.basic
+          : SystemMouseCursors.click,
       builder: (context, hovered, t) {
         return GestureDetector(
           onTap: onTap,
@@ -402,8 +411,8 @@ class TagChip extends StatelessWidget {
               color: selected
                   ? c.accentSoft
                   : hovered
-                      ? c.surfaceAlt
-                      : Colors.transparent,
+                  ? c.surfaceAlt
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(7),
               border: Border.all(
                 color: selected ? c.accent.withValues(alpha: 0.3) : c.line,
@@ -436,7 +445,11 @@ class TagChip extends StatelessWidget {
                   const SizedBox(width: 4),
                   GestureDetector(
                     onTap: onDelete,
-                    child: Icon(Icons.close_rounded, size: 11, color: c.inkMuted),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 11,
+                      color: c.inkMuted,
+                    ),
                   ),
                 ],
               ],
@@ -466,13 +479,13 @@ class Dot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: color ?? AppPalette.of(context).inkMuted,
-          shape: BoxShape.circle,
-        ),
-      );
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: color ?? AppPalette.of(context).inkMuted,
+      shape: BoxShape.circle,
+    ),
+  );
 }
 
 /// 空状态的小插画：一圈淡墨 + 一支停顿的笔
@@ -513,7 +526,11 @@ class _InkPainter extends CustomPainter {
       ..strokeWidth = 1.6
       ..strokeCap = StrokeCap.round;
     final start = center.translate(size.width * 0.22, -size.height * 0.22);
-    canvas.drawLine(start, start.translate(size.width * 0.12, size.height * 0.16), pen);
+    canvas.drawLine(
+      start,
+      start.translate(size.width * 0.12, size.height * 0.16),
+      pen,
+    );
     canvas.drawCircle(start, 2.1, pen..style = PaintingStyle.fill);
   }
 
@@ -522,45 +539,239 @@ class _InkPainter extends CustomPainter {
       old.ink != ink || old.accent != accent;
 }
 
+/// 全局唯一的轻提示。
+///
+/// 之前用的是 Material 的 SnackBar：横贯整个窗口、颜色取自反色主题，
+/// 而且在连续触发时会排队，一条条加起来就显得「怎么还不消失」。
+/// 这里换成自己维护的一小条：宽度跟着文字走，颜色跟着当前主题走，
+/// 同一时间只有一条 —— 新的提示直接顶掉旧的，不排队。
+class _ToastSession {
+  _ToastSession(this.entry);
+  final OverlayEntry entry;
+
+  void dismiss() {
+    if (entry.mounted) entry.remove();
+  }
+}
+
+_ToastSession? _activeToast;
+
 Future<void> showToast(
   BuildContext context,
   String message, {
   IconData? icon,
   String? actionLabel,
   VoidCallback? onAction,
-  Duration duration = const Duration(seconds: 2),
+  Duration? duration,
 }) async {
-  final c = AppPalette.of(context);
-  final messenger = ScaffoldMessenger.of(context);
-  messenger.hideCurrentSnackBar();
-  messenger.showSnackBar(
-    SnackBar(
-      // 带撤销的提示多留一会儿，给手指反应的时间。
-      duration: onAction == null ? duration : const Duration(seconds: 5),
-      content: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 16, color: c.paper),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
-            child: Text(
-              message,
-              style: TextStyle(fontFamily: 'NotoSansSC', color: c.paper, fontSize: 13),
-            ),
-          ),
-        ],
+  final overlay = Overlay.maybeOf(context, rootOverlay: true);
+  if (overlay == null) return;
+  final media = MediaQuery.maybeOf(context);
+  final compact = (media?.size.width ?? 1200) < 900;
+
+  // 新提示不必等旧的那条走完。
+  _activeToast?.dismiss();
+  _activeToast = null;
+
+  late _ToastSession session;
+  final entry = OverlayEntry(
+    builder: (context) => Positioned(
+      left: 16,
+      right: 16,
+      bottom: (media?.padding.bottom ?? 0) + (compact ? 86 : 20),
+      child: Center(
+        child: _ToastBubble(
+          message: message,
+          icon: icon,
+          actionLabel: actionLabel,
+          onAction: onAction,
+          duration:
+              duration ??
+              (onAction == null
+                  ? Duration(
+                      milliseconds: (1800 + message.length * 28)
+                          .clamp(1800, 4200)
+                          .toInt(),
+                    )
+                  : const Duration(seconds: 5)),
+          onClosed: () {
+            session.dismiss();
+            if (identical(_activeToast, session)) _activeToast = null;
+          },
+        ),
       ),
-      action: actionLabel == null
-          ? null
-          : SnackBarAction(
-              label: actionLabel,
-              textColor: c.paper,
-              onPressed: onAction ?? () {},
-            ),
     ),
   );
+  session = _ToastSession(entry);
+  _activeToast = session;
+  overlay.insert(entry);
+}
+
+class _ToastBubble extends StatefulWidget {
+  const _ToastBubble({
+    required this.message,
+    required this.duration,
+    required this.onClosed,
+    this.icon,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final String message;
+  final Duration duration;
+  final VoidCallback onClosed;
+  final IconData? icon;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  State<_ToastBubble> createState() => _ToastBubbleState();
+}
+
+class _ToastBubbleState extends State<_ToastBubble>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 180),
+  );
+  Timer? _timer;
+  bool _closing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _c.forward();
+    _timer = Timer(widget.duration, _close);
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  void _close() {
+    if (_closing || !mounted) return;
+    _closing = true;
+    _timer?.cancel();
+    _c.reverse().whenComplete(() {
+      if (mounted) widget.onClosed();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    final media = MediaQuery.maybeOf(context);
+    final maxWidth = media == null
+        ? 420.0
+        : math.min(420.0, media.size.width - 48);
+    final fade = CurvedAnimation(parent: _c, curve: Motion.enter);
+    return IgnorePointer(
+      ignoring: _closing,
+      // Overlay 里没有 Material 祖先，继承到的默认文字样式是 Flutter 的
+      // 「醒目回退」（带黄红下划线），这里补一层透明 Material 和显式样式，
+      // 让提示条和界面里的其他字一样干净。
+      child: Material(
+        type: MaterialType.transparency,
+        child: DefaultTextStyle(
+          style: TextStyle(
+            fontFamily: 'NotoSansSC',
+            fontSize: 11.5,
+            fontWeight: FontWeight.w400,
+            color: c.ink,
+            decoration: TextDecoration.none,
+          ),
+          child: FadeTransition(
+            opacity: fade,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.18),
+                end: Offset.zero,
+              ).animate(fade),
+              child: GestureDetector(
+                onTap: _close,
+                child: Container(
+                  constraints: BoxConstraints(maxWidth: maxWidth),
+                  padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+                  decoration: BoxDecoration(
+                    color: c.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: c.lineStrong.withValues(alpha: 0.9),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: c.shadow.withValues(
+                          alpha: c.isDark ? 0.36 : 0.10,
+                        ),
+                        blurRadius: 18,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.icon != null) ...[
+                        Icon(widget.icon, size: 14, color: c.accent),
+                        const SizedBox(width: 8),
+                      ],
+                      Flexible(
+                        child: Text(
+                          widget.message,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontFamily: 'NotoSansSC',
+                            fontSize: 11.5,
+                            height: 1.5,
+                            color: c.ink,
+                            // Overlay 里没有 Material 祖先，继承到的默认样式
+                            // 是 Flutter 的「醒目回退」：这里必须显式关掉下划线。
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                      if (widget.actionLabel != null) ...[
+                        const SizedBox(width: 10),
+                        GestureDetector(
+                          onTap: () {
+                            _close();
+                            widget.onAction?.call();
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: c.accentSoft,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              widget.actionLabel!,
+                              style: TextStyle(
+                                fontFamily: 'NotoSansSC',
+                                fontSize: 11,
+                                color: c.accent,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 Future<bool> showConfirm(
@@ -609,7 +820,9 @@ Future<bool> showConfirm(
           style: FilledButton.styleFrom(
             backgroundColor: danger ? c.danger : c.ink,
             foregroundColor: c.paper,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(9),
+            ),
           ),
           onPressed: () => Navigator.of(context).pop(true),
           child: Text(confirmLabel ?? tr('确定')),

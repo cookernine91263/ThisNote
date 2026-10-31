@@ -59,6 +59,9 @@ const Map<String, String> _en = <String, String>{
   '添加链接': 'Add link',
   '移除': 'Remove',
   '应用': 'Apply',
+  '段落样式': 'Paragraph style',
+  '对齐方式': 'Alignment',
+  '列表': 'List',
 };
 
 String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
@@ -83,6 +86,7 @@ class EditorToolbar extends StatelessWidget {
       builder: (context, _) {
         final style = controller.getSelectionStyle();
         final attrs = style.attributes;
+        final customFonts = context.watch<AppState>().settings.customFonts;
         bool has(String key) => attrs.containsKey(key);
         final header = attrs[Attribute.header.key]?.value;
         final list = attrs[Attribute.list.key]?.value;
@@ -142,6 +146,7 @@ class EditorToolbar extends StatelessWidget {
           ),
           const _Sep(),
           _MenuChip(
+            tooltip: _t('段落样式'),
             label: switch (header) {
               1 => _t('标题 1'),
               2 => _t('标题 2'),
@@ -160,7 +165,7 @@ class EditorToolbar extends StatelessWidget {
           ),
           const SizedBox(width: 2),
           _FontChip(
-            label: _t(fontLabel(font)),
+            label: _t(fontLabel(font, customFonts)),
             active: font != null,
             onTap: () async {
               final selected = await showFontPicker(
@@ -249,6 +254,7 @@ class EditorToolbar extends StatelessWidget {
             },
           ),
           _MenuChip(
+            tooltip: _t('对齐方式'),
             icon: switch (align) {
               'center' => LucideIcons.alignCenter,
               'right' => LucideIcons.alignRight,
@@ -265,6 +271,7 @@ class EditorToolbar extends StatelessWidget {
             ],
           ),
           _MenuChip(
+            tooltip: _t('列表'),
             icon: switch (list) {
               'ordered' => LucideIcons.listOrdered,
               'checked' || 'unchecked' => LucideIcons.listChecks,
@@ -336,15 +343,27 @@ class EditorToolbar extends StatelessWidget {
           ),
         ];
 
-        return Container(
-          height: mobile ? 46 : 44,
+        final bar = Container(
+          height: mobile ? 46 : 40,
           decoration: BoxDecoration(
             color: c.surface,
-            border: Border(
-              top: mobile ? BorderSide(color: c.line) : BorderSide.none,
-              bottom: mobile ? BorderSide.none : BorderSide(color: c.line),
-            ),
+            borderRadius:
+                mobile ? BorderRadius.zero : BorderRadius.circular(12),
+            border: mobile
+                ? Border(top: BorderSide(color: c.line))
+                : Border.all(color: c.line),
+            boxShadow: mobile
+                ? null
+                : [
+                    BoxShadow(
+                      color:
+                          c.shadow.withValues(alpha: c.isDark ? 0.24 : 0.045),
+                      blurRadius: 12,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
           ),
+          clipBehavior: Clip.antiAlias,
           child: ScrollConfiguration(
             behavior: ScrollConfiguration.of(context).copyWith(
               scrollbars: false,
@@ -355,6 +374,12 @@ class EditorToolbar extends StatelessWidget {
               child: Row(children: children),
             ),
           ),
+        );
+        if (mobile) return bar;
+        // 桌面上把工具栏收成一张圆角的小卡片，别再横着切满一条。
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
+          child: bar,
         );
       },
     );
@@ -616,6 +641,7 @@ class _MenuChip extends StatelessWidget {
     required this.width,
     this.label,
     this.icon,
+    this.tooltip = '',
   });
 
   final String? label;
@@ -623,12 +649,13 @@ class _MenuChip extends StatelessWidget {
   final List<_MenuItem> menu;
   final bool active;
   final double width;
+  final String tooltip;
 
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     return PopupMenuButton<int>(
-      tooltip: '',
+      tooltip: tooltip,
       padding: EdgeInsets.zero,
       position: PopupMenuPosition.under,
       color: c.surface,

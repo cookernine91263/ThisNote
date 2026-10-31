@@ -66,6 +66,7 @@ class AppState extends ChangeNotifier {
     await store.init();
     settings = await store.loadSettings();
     I18n.lang = AppLang.fromCode(settings.language);
+    await _loadCustomFonts();
     notes = await store.loadLibrary();
     folders = await store.loadFolders();
     activity = await store.loadActivity();
@@ -809,6 +810,7 @@ class AppState extends ChangeNotifier {
     await closeEditor();
     settings = await store.loadSettings();
     I18n.lang = AppLang.fromCode(settings.language);
+    await _loadCustomFonts();
     notes = await store.loadLibrary();
     folders = await store.loadFolders();
     query = '';
@@ -839,6 +841,59 @@ class AppState extends ChangeNotifier {
     mutate(settings);
     await store.saveSettings(settings);
     _notify();
+  }
+
+  /// 把用户导入过的字体重新注册进字体引擎。放在启动和恢复备份之后调用，
+  /// 正文里的 font 属性只存字体族名，字形由这里补上。
+  Future<void> _loadCustomFonts() async {
+    for (final font in settings.customFonts) {
+      try {
+        final file = File(store.resolveFont(font.file));
+        if (!await file.exists()) continue;
+        final bytes = await file.readAsBytes();
+        await (FontLoader(font.id)
+              ..addFont(Future<ByteData>.value(ByteData.sublistView(bytes))))
+            .load();
+      } catch (_) {
+        // 字体文件损坏、或平台不支持：跳过，界面照常打开。
+      }
+    }
+  }
+
+  /// 导入一个 TTF / OTF 字体，返回 null 表示文件不可用。
+  Future<CustomFont?> importCustomFont({
+    required String fileName,
+    required Uint8List bytes,
+  }) async {
+    final ext = p.extension(fileName).toLowerCase();
+    if (ext != '.ttf' && ext != '.otf') return null;
+    if (bytes.length > 80 * 1024 * 1024) return null;
+    final id = 'user_${DateTime.now().millisecondsSinceEpoch}';
+    try {
+      await (FontLoader(id)
+            ..addFont(Future<ByteData>.value(ByteData.sublistView(bytes))))
+          .load();
+    } catch (_) {
+      return null;
+    }
+    final file = await store.saveFont(bytes, ext.replaceAll('.', ''));
+    final raw = p.basenameWithoutExtension(fileName).trim();
+    final name = raw.isEmpty
+        ? '我的字体'
+        : (raw.length > 40 ? raw.substring(0, 40) : raw);
+    final font = CustomFont(id: id, name: name, file: file);
+    await updateSettings(
+      (s) => s.customFonts = [...s.customFonts, font],
+    );
+    return font;
+  }
+
+  Future<void> removeCustomFont(CustomFont font) async {
+    await updateSettings(
+      (s) => s.customFonts =
+          s.customFonts.where((e) => e.id != font.id).toList(growable: false),
+    );
+    await store.deleteFont(font.file);
   }
 
   Future<void> setThemeMode(ThemeMode mode) => updateSettings((s) => s.themeMode = mode);
@@ -954,6 +1009,18 @@ class EditorSession extends ChangeNotifier {
     titleController.addListener(_onTitleChanged);
     _lastDelta = jsonEncode(controller.document.toDelta().toJson());
     _lastTitle = titleController.text;
+    // 旧笔记没有记录过写作时长：用创建到最近修改的跨度做一个保守估计，
+    // 只接受一分钟到十二小时之间，太久远的笔记宁可不猜。
+    _writingMs = note.writingSeconds * 1000;
+    if (_writingMs <= 0) {
+      final span = note.updatedAt.difference(note.createdAt);
+      if (span > const Duration(minutes: 1) &&
+          span <= const Duration(hours: 12)) {
+        _writingMs = span.inMilliseconds;
+        note.writingSeconds = _writingMs ~/ 1000;
+      }
+    }
+    _lastEditAt = DateTime.now();
     // 记下「今天第一次打开这篇时」的字数，续写才算得出今天新增了多少。
     app.activity.startSession(dayKey(DateTime.now()), note.id, words);
     _snapshotTimer = Timer.periodic(const Duration(minutes: 5), (_) {
@@ -976,6 +1043,21 @@ class EditorSession extends ChangeNotifier {
   bool dirty = false;
   DateTime? lastSaved;
   int renderEpoch = 0;
+
+  /// 实际动笔的毫秒数：按两次输入之间的间隔累加，超过一分钟的停顿不算。
+  int _writingMs = 0;
+  DateTime _lastEditAt = DateTime.now();
+
+  int get writingSeconds => _writingMs ~/ 1000;
+
+  void _accumulateWriting() {
+    final now = DateTime.now();
+    final gap = now.difference(_lastEditAt);
+    if (gap > Duration.zero && gap <= const Duration(minutes: 1)) {
+      _writingMs += gap.inMilliseconds;
+    }
+    _lastEditAt = now;
+  }
 
   /// 文档每改一次自增，用来复用字数/纯文本的计算结果。
   int _revision = 0;
@@ -1299,6 +1381,7 @@ class EditorSession extends ChangeNotifier {
   void _onEditorChanged() {
     final now = jsonEncode(controller.document.toDelta().toJson());
     if (now != _lastDelta) {
+      _accumulateWriting();
       _lastDelta = now;
       _findCacheKey = '';
       _revision++;
@@ -1310,6 +1393,7 @@ class EditorSession extends ChangeNotifier {
 
   void _onTitleChanged() {
     if (titleController.text != _lastTitle) {
+      _accumulateWriting();
       _lastTitle = titleController.text;
       dirty = true;
       notifyListeners();
@@ -1334,6 +1418,7 @@ class EditorSession extends ChangeNotifier {
     note.delta = controller.document.toDelta().toJson();
     note.text = text;
     note.words = countWords(text);
+    note.writingSeconds = writingSeconds;
     note.updatedAt = DateTime.now();
     if (note.day.isEmpty) note.day = dayKey(note.createdAt);
     app.recordActivity(note.id, note.words);

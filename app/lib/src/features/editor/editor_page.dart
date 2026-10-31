@@ -90,6 +90,8 @@ const Map<String, String> _en = <String, String>{
       'Your current text is saved as a new version first, so you can come back to it.',
   '回到这里': 'Go back here',
   '恢复': 'Restore',
+  '按实际动笔时间累计，停顿超过一分钟不计入':
+      'Counts actual writing time; pauses longer than a minute are skipped.',
 };
 
 String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
@@ -931,12 +933,18 @@ class _TitleBlock extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              Text(
-                readingTime(session.words),
-                style: TextStyle(
-                  fontFamily: 'NotoSansSC',
-                  fontSize: 9.5,
-                  color: c.inkMuted,
+              AnimatedBuilder(
+                animation: session,
+                builder: (context, _) => Tooltip(
+                  message: _t('按实际动笔时间累计，停顿超过一分钟不计入'),
+                  child: Text(
+                    writingTimeLabel(session.writingSeconds, session.words),
+                    style: TextStyle(
+                      fontFamily: 'NotoSansSC',
+                      fontSize: 9.5,
+                      color: c.inkMuted,
+                    ),
+                  ),
                 ),
               ),
             ],
