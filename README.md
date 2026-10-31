@@ -105,8 +105,8 @@
 
 当前环境已生成：
 
-- `dist/ThisNote-Setup-1.0.0.exe`（Windows x64 安装包）
-- `dist/ThisNote-Android-1.0.0.apk`（Android 8.0+，已签名）
+- `dist/ThisNote-Setup-1.1.0.exe`（Windows x64 安装包）
+- `dist/ThisNote-Android-1.1.0.apk`（Android 8.0+，已签名）
 - `dist/SHA256SUMS.txt`
 
 安装说明见 `dist/安装说明.txt`。
@@ -166,7 +166,7 @@ flutter build windows --release
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" ..\installer\ThisNote.iss
-# 产物：dist/ThisNote-Setup-1.0.0.exe
+# 产物：dist/ThisNote-Setup-1.1.0.exe
 ```
 
 ### Android

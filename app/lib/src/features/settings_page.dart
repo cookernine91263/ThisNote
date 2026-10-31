@@ -571,7 +571,7 @@ class SettingsPage extends StatelessWidget {
                 subtitle: _t('一个安静的本地写作空间'),
                 children: [
                   Text(
-                    _t('此记 · ThisNote 1.0.0'),
+                    _t('此记 · ThisNote 1.1.0'),
                     style: TextStyle(
                       fontFamily: 'NotoSansSC',
                       fontSize: 12,
@@ -1794,7 +1794,7 @@ const Map<String, String> _en = <String, String>{
       'A backup is a zip of text, images and version history. Restoring overwrites current data, so a fresh backup is made first.',
   '关于此记': 'About ThisNote',
   '一个安静的本地写作空间': 'A quiet local writing space',
-  '此记 · ThisNote 1.0.0': 'ThisNote 1.0.0',
+  '此记 · ThisNote 1.1.0': 'ThisNote 1.1.0',
   '内置字体：思源黑体 / 思源宋体 / 霞鹜文楷 /\n'
           '马善政毛笔 / 站酷小薇，均为 SIL Open Font License。\n'
           '中、英、日与假名可在同一页里混排。':
