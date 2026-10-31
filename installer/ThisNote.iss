@@ -1,5 +1,5 @@
 ﻿#define MyAppName "此记 ThisNote"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.1.1"
 #define MyAppPublisher "ThisNote"
 #define MyAppExeName "ThisNote.exe"
 #define BuildDir "F:\ThisNote\app\build\windows\x64\runner\Release"

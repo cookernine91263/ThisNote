@@ -677,7 +677,10 @@ class _EditorCanvas extends StatelessWidget {
                             ),
                           ],
                         ),
-                  clipBehavior: Clip.antiAlias,
+                  // 手机上不铺卡片纸（没有 decoration），此时不能再要求裁剪：
+                  // Container 的断言是「有 decoration 才能 clip」，安卓 release
+                  // 里会退化成一块灰色错误块。
+                  clipBehavior: mobile ? Clip.none : Clip.antiAlias,
                   child: Column(
                     children: [
                       _TitleBlock(
@@ -832,16 +835,21 @@ class _TitleBlock extends StatelessWidget {
             children: [
               _KindMenu(session: session),
               const SizedBox(width: 8),
-              Text(
-                dateLabel(note.createdAt),
-                style: TextStyle(
-                  fontFamily: 'NotoSansSC',
-                  fontSize: 10,
-                  color: c.inkMuted,
-                  letterSpacing: 0.2,
+              // 日期在窄屏上可能很长（年月日 + 星期），让它自己收缩，
+              // 别把心情/天气两个按钮挤出屏幕。
+              Expanded(
+                child: Text(
+                  dateLabel(note.createdAt),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'NotoSansSC',
+                    fontSize: 10,
+                    color: c.inkMuted,
+                    letterSpacing: 0.2,
+                  ),
                 ),
               ),
-              const Spacer(),
               _MoodMenu(session: session, mood: mood),
               const SizedBox(width: 4),
               _WeatherMenu(session: session, weather: weather),
