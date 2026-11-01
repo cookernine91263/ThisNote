@@ -124,8 +124,8 @@ Say hi in the comments — I will answer.
 
 Already built in this environment:
 
-- `dist/ThisNote-Setup-1.3.0.exe` (Windows x64 installer)
-- `dist/ThisNote-Android-1.3.0-arm64.apk` (Android 8.0+ arm64, signed)
+- `dist/ThisNote-Setup-1.3.1.exe` (Windows x64 installer)
+- `dist/ThisNote-Android-1.3.1-arm64.apk` (Android 8.0+ arm64, signed)
 - `dist/SHA256SUMS.txt`
 
 See `dist/安装说明.txt` for installation notes.
@@ -185,7 +185,7 @@ Installer:
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" ..\installer\ThisNote.iss
-# output: dist/ThisNote-Setup-1.3.0.exe
+# output: dist/ThisNote-Setup-1.3.1.exe
 ```
 
 ### Android

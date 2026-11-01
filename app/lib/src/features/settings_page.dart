@@ -577,7 +577,7 @@ class SettingsPage extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _t('此记 · ThisNote 1.3.0'),
+                              _t('此记 · ThisNote 1.3.1'),
                               style: TextStyle(
                                 fontFamily: 'NotoSansSC',
                                 fontSize: 12,
@@ -1986,7 +1986,7 @@ const Map<String, String> _en = <String, String>{
   '印章颜色跟随强调色，自定义颜色也会一起变':
       'The seal follows your accent color, including custom colors',
   '一个安静的本地写作空间': 'A quiet local writing space',
-  '此记 · ThisNote 1.3.0': 'ThisNote 1.3.0',
+  '此记 · ThisNote 1.3.1': 'ThisNote 1.3.1',
   '内置字体：思源黑体 / 思源宋体 / 霞鹜文楷 /\n'
           '马善政毛笔 / 站酷小薇 / 思源细体 / 得意黑 / 思源等宽，\n'
           '均为 SIL Open Font License。中、英、日与假名可同页混排。':
