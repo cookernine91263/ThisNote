@@ -234,88 +234,112 @@ class _CalendarHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    final compact = MediaQuery.sizeOf(context).width < 720;
+    final titleBlock = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _t('日历'),
+        Text(
+          _t('日历'),
+          style: TextStyle(
+            fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
+            fontSize: I18n.isEn ? 26 : 30,
+            fontWeight: I18n.isEn ? FontWeight.w600 : null,
+            letterSpacing: I18n.isEn ? 0.3 : 2,
+            color: c.ink,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          _t('在时间里回看写下的句子'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontFamily: 'NotoSansSC',
+            fontSize: 10.5,
+            color: c.inkMuted,
+          ),
+        ),
+      ],
+    );
+    final stats = Text(
+      _t('本月 {n} 篇 · {w} 字', {
+        'n': _q(monthNotes, '篇', 'note'),
+        'w': _q(monthWords, '字', 'word'),
+      }),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontFamily: 'NotoSansSC',
+        fontSize: 10,
+        color: c.inkMuted,
+      ),
+    );
+    final controls = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SoftIconButton(
+          icon: LucideIcons.chevronLeft,
+          size: 30,
+          tooltip: _t('上个月'),
+          onPressed: onPrev,
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: AnimatedSwitcher(
+            duration: Motion.fast,
+            child: Text(
+              monthTitle(month),
+              key: ValueKey(month),
               style: TextStyle(
-                fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
-                fontSize: I18n.isEn ? 26 : 30,
-                fontWeight: I18n.isEn ? FontWeight.w600 : null,
-                letterSpacing: I18n.isEn ? 0.3 : 2,
+                fontFamily: 'NotoSansSC',
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
                 color: c.ink,
               ),
             ),
-            const SizedBox(height: 3),
-            Text(
-              _t('在时间里回看写下的句子'),
-              style: TextStyle(
-                fontFamily: 'NotoSansSC',
-                fontSize: 10.5,
-                color: c.inkMuted,
-              ),
-            ),
-          ],
+          ),
         ),
-        const Spacer(),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              _t('本月 {n} 篇 · {w} 字', {
-                'n': _q(monthNotes, '篇', 'note'),
-                'w': _q(monthWords, '字', 'word'),
-              }),
-              style: TextStyle(
-                fontFamily: 'NotoSansSC',
-                fontSize: 10,
-                color: c.inkMuted,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                SoftIconButton(
-                  icon: LucideIcons.chevronLeft,
-                  size: 30,
-                  tooltip: _t('上个月'),
-                  onPressed: onPrev,
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: AnimatedSwitcher(
-                    duration: Motion.fast,
-                    child: Text(
-                      monthTitle(month),
-                      key: ValueKey(month),
-                      style: TextStyle(
-                        fontFamily: 'NotoSansSC',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: c.ink,
-                      ),
-                    ),
-                  ),
-                ),
-                SoftIconButton(
-                  icon: LucideIcons.chevronRight,
-                  size: 30,
-                  tooltip: _t('下个月'),
-                  onPressed: onNext,
-                ),
-                const SizedBox(width: 6),
-                SoftButton(
-                  label: _t('回到今天'),
-                  dense: true,
-                  onPressed: onToday,
-                ),
-              ],
-            ),
-          ],
+        SoftIconButton(
+          icon: LucideIcons.chevronRight,
+          size: 30,
+          tooltip: _t('下个月'),
+          onPressed: onNext,
+        ),
+        const SizedBox(width: 6),
+        SoftButton(
+          label: _t('回到今天'),
+          dense: true,
+          onPressed: onToday,
+        ),
+      ],
+    );
+    if (!compact) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          titleBlock,
+          const Spacer(),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              stats,
+              const SizedBox(height: 8),
+              controls,
+            ],
+          ),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        titleBlock,
+        const SizedBox(height: 10),
+        stats,
+        const SizedBox(height: 6),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: controls,
         ),
       ],
     );
@@ -398,16 +422,21 @@ class _DayCell extends StatelessWidget {
         break;
       }
     }
-    return AspectRatio(
-      aspectRatio: 1.45,
-      child: HoverBuilder(
-        builder: (context, hovered, t) {
-          return GestureDetector(
-            onTap: () => onTap(day),
-            child: AnimatedContainer(
-              duration: Motion.fast,
-              margin: const EdgeInsets.all(2),
-              padding: const EdgeInsets.fromLTRB(7, 5, 7, 5),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 手机 7 列时格子很窄；保持正方形才能放下日期与写作标记，
+        // 桌面宽格子仍用原来的 1.45 比例，日历不会突然变高。
+        final compact = constraints.maxWidth < 72;
+        return AspectRatio(
+          aspectRatio: compact ? 0.82 : 1.45,
+          child: HoverBuilder(
+            builder: (context, hovered, t) {
+              return GestureDetector(
+                onTap: () => onTap(day),
+                child: AnimatedContainer(
+                  duration: Motion.fast,
+                  margin: const EdgeInsets.all(2),
+                  padding: const EdgeInsets.fromLTRB(7, 5, 7, 5),
               decoration: BoxDecoration(
                 color: selected
                     ? c.accentSoft
@@ -471,17 +500,19 @@ class _DayCell extends StatelessWidget {
                             color: c.inkMuted,
                           ),
                         ),
-                        const Spacer(),
-                        Container(
-                          width: 12,
-                          height: 2,
-                          decoration: BoxDecoration(
-                            color: c.accent.withValues(
-                              alpha: 0.25 + intensity * 0.6,
+                        if (!compact) ...[
+                          const Spacer(),
+                          Container(
+                            width: 12,
+                            height: 2,
+                            decoration: BoxDecoration(
+                              color: c.accent.withValues(
+                                alpha: 0.25 + intensity * 0.6,
+                              ),
+                              borderRadius: BorderRadius.circular(2),
                             ),
-                            borderRadius: BorderRadius.circular(2),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                 ],
@@ -490,6 +521,8 @@ class _DayCell extends StatelessWidget {
           );
         },
       ),
+    );
+      },
     );
   }
 }

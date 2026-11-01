@@ -195,7 +195,19 @@ TextStyle huaziTextStyle(String value, {required bool dark}) {
 }
 
 /// 供 Quill 的 customStyleBuilder 使用：字体切换、细体、倾斜与花字。
-TextStyle quillCustomStyle(Attribute attribute, {required bool dark}) {
+TextStyle quillCustomStyle(
+  Attribute attribute, {
+  required bool dark,
+  Color? muted,
+}) {
+  if (attribute.key == Attribute.list.key && attribute.value == 'checked') {
+    // 勾选后的待办只做展示层删除线：不改 Delta，取消勾选自动恢复。
+    return TextStyle(
+      decoration: TextDecoration.lineThrough,
+      decorationColor: muted,
+      decorationThickness: 1.3,
+    );
+  }
   if (attribute.key == Attribute.font.key) {
     final value = attribute.value;
     if (value is! String) return const TextStyle();

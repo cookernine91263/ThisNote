@@ -20,6 +20,7 @@ class NoteStore {
   late Directory historyDir;
   late Directory assetsDir;
   late Directory fontsDir;
+  late Directory conversationsDir;
 
   bool _initialized = false;
 
@@ -78,7 +79,15 @@ class NoteStore {
     historyDir = Directory(p.join(root.path, 'history'));
     assetsDir = Directory(p.join(root.path, 'assets'));
     fontsDir = Directory(p.join(root.path, 'fonts'));
-    for (final d in [root, notesDir, historyDir, assetsDir, fontsDir]) {
+    conversationsDir = Directory(p.join(root.path, 'conversations'));
+    for (final d in [
+      root,
+      notesDir,
+      historyDir,
+      assetsDir,
+      fontsDir,
+      conversationsDir,
+    ]) {
       if (!await d.exists()) await d.create(recursive: true);
     }
     _initialized = true;
@@ -192,6 +201,41 @@ class NoteStore {
     }
     final h = Directory(p.join(historyDir.path, id));
     if (await h.exists()) await h.delete(recursive: true);
+    await deleteConversation(id);
+  }
+
+  File _conversationFile(String noteId) =>
+      File(p.join(conversationsDir.path, '$noteId.json'));
+
+  Future<AiConversation?> loadConversation(String noteId) async {
+    final raw = await _readWithBackup(_conversationFile(noteId));
+    if (raw == null) return null;
+    try {
+      return AiConversation.fromJson(
+        noteId,
+        jsonDecode(raw) as Map<String, dynamic>,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveConversation(AiConversation conversation) =>
+      _writeAtomic(
+        _conversationFile(conversation.noteId),
+        jsonEncode(conversation.toJson()),
+      );
+
+  Future<void> deleteConversation(String noteId) async {
+    final file = _conversationFile(noteId);
+    for (final path in [file.path, '${file.path}.bak']) {
+      final f = File(path);
+      if (await f.exists()) {
+        try {
+          await f.delete();
+        } catch (_) {}
+      }
+    }
   }
 
   Future<void> saveSnapshot(Note note) async {
@@ -333,6 +377,7 @@ class NoteStore {
     await addDirectory(assetsDir, 'assets');
     await addDirectory(historyDir, 'history');
     await addDirectory(fontsDir, 'fonts');
+    await addDirectory(conversationsDir, 'conversations');
     if (await _libraryFile.exists()) {
       final data = await _libraryFile.readAsBytes();
       archive.addFile(ArchiveFile('library.json', data.length, data));
@@ -375,7 +420,8 @@ class NoteStore {
       } else if (name.startsWith('notes/') ||
           name.startsWith('assets/') ||
           name.startsWith('fonts/') ||
-          name.startsWith('history/')) {
+          name.startsWith('history/') ||
+          name.startsWith('conversations/')) {
         final out = File(p.join(root.path, name));
         await out.create(recursive: true);
         await out.writeAsBytes(file.content as List<int>, flush: true);

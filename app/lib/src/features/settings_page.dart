@@ -26,6 +26,7 @@ import '../state/app_state.dart';
 import 'editor/color_picker.dart';
 import 'editor/huazi.dart';
 import 'onboarding.dart';
+import 'splash.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -105,38 +106,39 @@ class SettingsPage extends StatelessWidget {
                 children: [
                   _RowLabel(label: _t('主题')),
                   const SizedBox(height: 9),
-                  Row(
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       for (final entry in [
                         (ThemeMode.system, LucideIcons.monitor, _t('跟随系统')),
                         (ThemeMode.light, LucideIcons.sun, _t('纸白')),
                         (ThemeMode.dark, LucideIcons.moon, _t('墨夜')),
                       ])
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: _Choice(
-                            selected: s.themeMode == entry.$1,
-                            icon: entry.$2,
-                            label: entry.$3,
-                            onTap: () {},
-                            onTapPosition: (origin) {
-                              // 点的就是当前主题：不播那段看不见的扩散，
-                              // 也不让遮罩平白挡掉半秒多的输入。
-                              if (s.themeMode == entry.$1) return;
-                              ThemeReveal.reveal(
-                                context: context,
-                                globalOrigin: origin,
-                                apply: () => state.setThemeMode(entry.$1),
-                              );
-                            },
-                          ),
+                        _Choice(
+                          selected: s.themeMode == entry.$1,
+                          icon: entry.$2,
+                          label: entry.$3,
+                          onTap: () {},
+                          onTapPosition: (origin) {
+                            // 点的就是当前主题：不播那段看不见的扩散，
+                            // 也不让遮罩平白挡掉半秒多的输入。
+                            if (s.themeMode == entry.$1) return;
+                            ThemeReveal.reveal(
+                              context: context,
+                              globalOrigin: origin,
+                              apply: () => state.setThemeMode(entry.$1),
+                            );
+                          },
                         ),
                     ],
                   ),
                   const SizedBox(height: 18),
                   _RowLabel(label: _t('强调色')),
                   const SizedBox(height: 9),
-                  Row(
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
                     children: [
                       for (final entry in [
                         ('vermilion', _t('朱砂'), const Color(0xFFA84637)),
@@ -144,54 +146,8 @@ class SettingsPage extends StatelessWidget {
                         ('sage', _t('松烟'), const Color(0xFF5E7359)),
                         ('gold', _t('秋香'), const Color(0xFF9C7A43)),
                       ])
-                        Padding(
-                          padding: const EdgeInsets.only(right: 12),
-                          child: GestureDetector(
-                            onTap: () => state.setAccent(entry.$1),
-                            child: Column(
-                              children: [
-                                AnimatedContainer(
-                                  duration: Motion.fast,
-                                  width: 26,
-                                  height: 26,
-                                  decoration: BoxDecoration(
-                                    color: entry.$3,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: s.accent == entry.$1
-                                          ? c.ink
-                                          : Colors.transparent,
-                                      width: 2,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  entry.$2,
-                                  style: TextStyle(
-                                    fontFamily: 'NotoSansSC',
-                                    fontSize: 8.5,
-                                    color: s.accent == entry.$1
-                                        ? c.ink
-                                        : c.inkMuted,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      Padding(
-                        padding: const EdgeInsets.only(right: 12),
-                        child: GestureDetector(
-                          onTap: () async {
-                            final hex = await showNoteColorPicker(
-                              context,
-                              background: false,
-                            );
-                            if (hex != null && hex != 'clear') {
-                              await state.setAccent(hex);
-                            }
-                          },
+                        GestureDetector(
+                          onTap: () => state.setAccent(entry.$1),
                           child: Column(
                             children: [
                               AnimatedContainer(
@@ -199,50 +155,90 @@ class SettingsPage extends StatelessWidget {
                                 width: 26,
                                 height: 26,
                                 decoration: BoxDecoration(
-                                  color: s.accent.startsWith('#')
-                                      ? parseHex(s.accent)
-                                      : null,
-                                  gradient: s.accent.startsWith('#')
-                                      ? null
-                                      : const SweepGradient(
-                                          colors: [
-                                            Color(0xFFA84637),
-                                            Color(0xFF9C7A43),
-                                            Color(0xFF5E7359),
-                                            Color(0xFF44515F),
-                                            Color(0xFF7A5A6B),
-                                            Color(0xFFA84637),
-                                          ],
-                                        ),
+                                  color: entry.$3,
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: s.accent.startsWith('#')
+                                    color: s.accent == entry.$1
                                         ? c.ink
                                         : Colors.transparent,
                                     width: 2,
                                   ),
                                 ),
-                                child: Icon(
-                                  LucideIcons.pipette,
-                                  size: 12,
-                                  color: s.accent.startsWith('#')
-                                      ? c.paper
-                                      : Colors.white,
-                                ),
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                _t('自选'),
+                                entry.$2,
                                 style: TextStyle(
                                   fontFamily: 'NotoSansSC',
                                   fontSize: 8.5,
-                                  color: s.accent.startsWith('#')
+                                  color: s.accent == entry.$1
                                       ? c.ink
                                       : c.inkMuted,
                                 ),
                               ),
                             ],
                           ),
+                        ),
+                      GestureDetector(
+                        onTap: () async {
+                          final hex = await showNoteColorPicker(
+                            context,
+                            background: false,
+                          );
+                          if (hex != null && hex != 'clear') {
+                            await state.setAccent(hex);
+                          }
+                        },
+                        child: Column(
+                          children: [
+                            AnimatedContainer(
+                              duration: Motion.fast,
+                              width: 26,
+                              height: 26,
+                              decoration: BoxDecoration(
+                                color: s.accent.startsWith('#')
+                                    ? parseHex(s.accent)
+                                    : null,
+                                gradient: s.accent.startsWith('#')
+                                    ? null
+                                    : const SweepGradient(
+                                        colors: [
+                                          Color(0xFFA84637),
+                                          Color(0xFF9C7A43),
+                                          Color(0xFF5E7359),
+                                          Color(0xFF44515F),
+                                          Color(0xFF7A5A6B),
+                                          Color(0xFFA84637),
+                                        ],
+                                      ),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: s.accent.startsWith('#')
+                                      ? c.ink
+                                      : Colors.transparent,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Icon(
+                                LucideIcons.pipette,
+                                size: 12,
+                                color: s.accent.startsWith('#')
+                                    ? c.paper
+                                    : Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _t('自选'),
+                              style: TextStyle(
+                                fontFamily: 'NotoSansSC',
+                                fontSize: 8.5,
+                                color: s.accent.startsWith('#')
+                                    ? c.ink
+                                    : c.inkMuted,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -572,20 +568,43 @@ class SettingsPage extends StatelessWidget {
                 title: _t('关于此记'),
                 subtitle: _t('一个安静的本地写作空间'),
                 children: [
-                  Text(
-                    _t('此记 · ThisNote 1.2.0'),
-                    style: TextStyle(
-                      fontFamily: 'NotoSansSC',
-                      fontSize: 12,
-                      color: c.ink,
-                    ),
+                  Row(
+                    children: [
+                      const Seal(size: 42, radius: 12),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _t('此记 · ThisNote 1.3.0'),
+                              style: TextStyle(
+                                fontFamily: 'NotoSansSC',
+                                fontSize: 12,
+                                color: c.ink,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              _t('印章颜色跟随强调色，自定义颜色也会一起变'),
+                              style: TextStyle(
+                                fontFamily: 'NotoSansSC',
+                                fontSize: 9.5,
+                                height: 1.6,
+                                color: c.inkMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 10),
                   Text(
                     _t(
                       '内置字体：思源黑体 / 思源宋体 / 霞鹜文楷 /\n'
-                      '马善政毛笔 / 站酷小薇，均为 SIL Open Font License。\n'
-                      '中、英、日与假名可在同一页里混排。',
+                      '马善政毛笔 / 站酷小薇 / 思源细体 / 得意黑 / 思源等宽，\n'
+                      '均为 SIL Open Font License。中、英、日与假名可同页混排。',
                     ),
                     style: TextStyle(
                       fontFamily: 'NotoSansSC',
@@ -1050,15 +1069,20 @@ class _Choice extends StatelessWidget {
           border: Border.all(color: selected ? c.ink : c.line),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 13, color: selected ? c.paper : c.inkMuted),
             const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'NotoSansSC',
-                fontSize: 11,
-                color: selected ? c.paper : c.inkSoft,
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: 'NotoSansSC',
+                  fontSize: 11,
+                  color: selected ? c.paper : c.inkSoft,
+                ),
               ),
             ),
           ],
@@ -1959,14 +1983,16 @@ const Map<String, String> _en = <String, String>{
   '备份是一个 zip，包含正文、图片与历史版本；恢复会覆盖当前数据，并先自动备份一次。':
       'A backup is a zip of text, images and version history. Restoring overwrites current data, so a fresh backup is made first.',
   '关于此记': 'About ThisNote',
+  '印章颜色跟随强调色，自定义颜色也会一起变':
+      'The seal follows your accent color, including custom colors',
   '一个安静的本地写作空间': 'A quiet local writing space',
-  '此记 · ThisNote 1.2.0': 'ThisNote 1.2.0',
+  '此记 · ThisNote 1.3.0': 'ThisNote 1.3.0',
   '内置字体：思源黑体 / 思源宋体 / 霞鹜文楷 /\n'
-          '马善政毛笔 / 站酷小薇，均为 SIL Open Font License。\n'
-          '中、英、日与假名可在同一页里混排。':
+          '马善政毛笔 / 站酷小薇 / 思源细体 / 得意黑 / 思源等宽，\n'
+          '均为 SIL Open Font License。中、英、日与假名可同页混排。':
       'Bundled fonts: Source Han Sans / Source Han Serif / LXGW WenKai /\n'
-      'Ma Shan Zheng / ZCOOL XiaoWei, all under the SIL Open Font License.\n'
-      'Chinese, English and Japanese mix freely on one page.',
+      'Ma Shan Zheng / ZCOOL XiaoWei / Noto Sans Light / Smiley Sans /\n'
+      'Source Han Mono, all under the SIL Open Font License.',
   '快捷键': 'Keyboard shortcuts',
   '完全本地 · 无账号 · 无广告 · 无追踪':
       'Fully local · No account · No ads · No tracking',

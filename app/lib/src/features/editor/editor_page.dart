@@ -19,7 +19,9 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../export_sheet.dart';
 import '../tag_editor.dart';
+import '../ai_chat/ai_chat_panel.dart';
 import '../../services/exporter.dart';
+import 'code_block.dart';
 import 'editor_toolbar.dart';
 import 'find_bar.dart';
 import 'huazi.dart';
@@ -53,6 +55,8 @@ const Map<String, String> _en = <String, String>{
   '置顶': 'Pin',
   '取消收藏': 'Remove favorite',
   '收藏': 'Favorite',
+  '复制一份': 'Duplicate',
+  '已复制一份': 'Duplicated',
   '导出…': 'Export…',
   '整理排版': 'Tidy typography',
   '复制为 Markdown': 'Copy as Markdown',
@@ -192,14 +196,38 @@ class EditorPage extends StatelessWidget {
                     );
                   },
                 ),
+              if (!zen && !mobile)
+                AnimatedBuilder(
+                  animation: session,
+                  builder: (context, _) {
+                    final open = session.aiOpen;
+                    return ClipRect(
+                      child: AnimatedContainer(
+                        duration: Motion.base,
+                        curve: Motion.enter,
+                        width: open ? 380 : 0,
+                        child: open
+                            ? AiChatPanel(
+                                session: session,
+                                docked: true,
+                                onClose: () => session.setAiOpen(false),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    );
+                  },
+                ),
             ],
           ),
         ),
         if (!zen && mobile)
-          EditorToolbar(
-            controller: session.controller,
-            session: session,
-            mobile: true,
+          SafeArea(
+            top: false,
+            child: EditorToolbar(
+              controller: session.controller,
+              session: session,
+              mobile: true,
+            ),
           ),
       ],
     );
@@ -559,6 +587,12 @@ class _MoreMenu extends StatelessWidget {
             final matches = state.notes.where((n) => n.id == note.id);
             if (matches.isNotEmpty) await state.toggleFavorite(matches.first);
             break;
+          case 'duplicate':
+            final copy = await state.duplicateNote(note.id);
+            if (copy != null && context.mounted) {
+              showToast(context, _t('已复制一份'), icon: LucideIcons.copy);
+            }
+            break;
           case 'trash':
             // 不再先弹确认框：删除立刻发生，用撤销兜住误触。
             showToast(
@@ -613,6 +647,7 @@ class _MoreMenu extends StatelessWidget {
           value: 'fav',
           child: Text(note?.favorite == true ? _t('取消收藏') : _t('收藏')),
         ),
+        PopupMenuItem(value: 'duplicate', child: Text(_t('复制一份'))),
         PopupMenuItem(value: 'export', child: Text(_t('导出…'))),
         PopupMenuItem(value: 'typography', child: Text(_t('整理排版'))),
         PopupMenuItem(value: 'copyMd', child: Text(_t('复制为 Markdown'))),
@@ -723,10 +758,15 @@ class _EditorCanvas extends StatelessWidget {
                                         state.settings.letterSpacing,
                                   ),
                                   customStyleBuilder: (attribute) =>
-                                      quillCustomStyle(attribute, dark: c.isDark),
+                                      quillCustomStyle(
+                                        attribute,
+                                        dark: c.isDark,
+                                        muted: c.inkMuted,
+                                      ),
                                   embedBuilders: [
                                     NoteImageEmbedBuilder(state.store),
                                     const DividerEmbedBuilder(),
+                                    const CodeBlockEmbedBuilder(),
                                   ],
                                   textSelectionThemeData: TextSelectionThemeData(
                                     cursorColor: c.accent,

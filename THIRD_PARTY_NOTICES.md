@@ -40,6 +40,20 @@
 - 许可证：SIL Open Font License 1.1
 - 许可证全文：`app/assets/fonts/OFL-LXGW-WenKai.txt`
 
+### Smiley Sans / 得意黑
+
+- 用途：有性格的标题
+- 来源：https://github.com/atelier-anchor/smiley-sans
+- 许可证：SIL Open Font License 1.1
+- 许可证全文：`app/assets/fonts/OFL-SmileySans.txt`
+
+### Source Han Mono / 思源等宽
+
+- 用途：代码块、行内代码与等宽排版
+- 来源：https://github.com/adobe-fonts/source-han-mono
+- 许可证：SIL Open Font License 1.1
+- 许可证全文：`app/assets/fonts/OFL-SourceHanMono.txt`
+
 ## 主要开源依赖
 
 | 依赖 | 许可证 | 用途 |
@@ -57,6 +71,7 @@
 | archive | MIT | ZIP / DOCX 打包 |
 | xml | MIT | OOXML / WebDAV XML |
 | http | BSD-3-Clause | AI 与 WebDAV 请求 |
+| highlight | MIT | 代码块语法高亮 |
 | intl | BSD-3-Clause | 日期与本地化 |
 | uuid | MIT | 文档 ID |
 | crypto | BSD-3-Clause | 密码哈希 |

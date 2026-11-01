@@ -48,6 +48,7 @@ Future<void> showExportSheet(BuildContext context) async {
     await showPngExport(context);
     return;
   }
+  final accent = AppPalette.of(context).accent;
 
   showDialog<void>(
     context: context,
@@ -64,7 +65,7 @@ Future<void> showExportSheet(BuildContext context) async {
         bytes = await exporter.docx(note);
         break;
       case ExportFormat.pdf:
-        bytes = await exporter.pdf(note);
+        bytes = await exporter.pdf(note, accent: accent);
         break;
       case ExportFormat.png:
         return;

@@ -508,6 +508,107 @@ class AiSettings {
   bool get configured => enabled && apiKey.trim().isNotEmpty;
 }
 
+enum AiRole { user, assistant }
+
+/// AI 对话里的一条消息。用户消息可以带「引用选区」，
+/// 助手消息会把它记在 quoteStart/quoteEnd 上，方便稍后替换回正文。
+class AiMessage {
+  AiMessage({
+    required this.id,
+    required this.role,
+    required this.text,
+    required this.at,
+    this.action = '',
+    this.quote = '',
+    this.quoteStart,
+    this.quoteEnd,
+    this.revision,
+    this.error = false,
+    this.interrupted = false,
+  });
+
+  final String id;
+  final AiRole role;
+  final String text;
+  final DateTime at;
+  final String action;
+  final String quote;
+  final int? quoteStart;
+  final int? quoteEnd;
+  final int? revision;
+  final bool error;
+  final bool interrupted;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'role': role.name,
+        'text': text,
+        'at': at.toIso8601String(),
+        'action': action,
+        'quote': quote,
+        'quoteStart': quoteStart,
+        'quoteEnd': quoteEnd,
+        'revision': revision,
+        'error': error,
+        'interrupted': interrupted,
+      };
+
+  factory AiMessage.fromJson(Map<String, dynamic> j) => AiMessage(
+        id: (j['id'] as String?) ?? '',
+        role: (j['role'] as String?) == 'assistant'
+            ? AiRole.assistant
+            : AiRole.user,
+        text: (j['text'] as String?) ?? '',
+        at: DateTime.tryParse(j['at'] as String? ?? '') ?? DateTime.now(),
+        action: (j['action'] as String?) ?? '',
+        quote: (j['quote'] as String?) ?? '',
+        quoteStart: (j['quoteStart'] as num?)?.toInt(),
+        quoteEnd: (j['quoteEnd'] as num?)?.toInt(),
+        revision: (j['revision'] as num?)?.toInt(),
+        error: (j['error'] as bool?) ?? false,
+        interrupted: (j['interrupted'] as bool?) ?? false,
+      );
+}
+
+/// 一篇笔记对应一段持久的 AI 对话，存放在 `conversations/<noteId>.json`。
+class AiConversation {
+  AiConversation({
+    required this.noteId,
+    List<AiMessage>? messages,
+    this.system = '',
+    DateTime? updatedAt,
+    this.version = 1,
+  })  : messages = messages ?? <AiMessage>[],
+        updatedAt = updatedAt ?? DateTime.now();
+
+  final String noteId;
+  final List<AiMessage> messages;
+  String system;
+  DateTime updatedAt;
+  final int version;
+
+  Map<String, dynamic> toJson() => {
+        'version': version,
+        'noteId': noteId,
+        'system': system,
+        'updatedAt': updatedAt.toIso8601String(),
+        'messages': messages.map((e) => e.toJson()).toList(),
+      };
+
+  factory AiConversation.fromJson(String noteId, Map<String, dynamic> j) =>
+      AiConversation(
+        noteId: (j['noteId'] as String?) ?? noteId,
+        system: (j['system'] as String?) ?? '',
+        updatedAt:
+            DateTime.tryParse(j['updatedAt'] as String? ?? '') ?? DateTime.now(),
+        version: (j['version'] as num?)?.toInt() ?? 1,
+        messages: ((j['messages'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => AiMessage.fromJson(e.cast<String, dynamic>()))
+            .toList(),
+      );
+}
+
 class WebDavSettings {
   WebDavSettings({
     this.enabled = false,
@@ -589,6 +690,7 @@ class AppSettings {
     this.pinSalt,
     this.onboardingDone = false,
     this.lastView = 'today',
+    this.lastListView = 'today',
     this.sort = 'updated',
     this.savedColors = const [],
     this.customFonts = const [],
@@ -614,6 +716,9 @@ class AppSettings {
   String? pinSalt;
   bool onboardingDone;
   String lastView;
+
+  /// 手机底部「笔记」tab 上次停留的列表视图（today / all / tags / trash / search）。
+  String lastListView;
   String sort;
   List<String> savedColors;
   List<CustomFont> customFonts;
@@ -640,6 +745,7 @@ class AppSettings {
         'pinSalt': pinSalt,
         'onboardingDone': onboardingDone,
         'lastView': lastView,
+        'lastListView': lastListView,
         'sort': sort,
         'savedColors': savedColors,
         'customFonts': customFonts.map((e) => e.toJson()).toList(),
@@ -668,6 +774,7 @@ class AppSettings {
         pinSalt: j['pinSalt'] as String?,
         onboardingDone: (j['onboardingDone'] as bool?) ?? false,
         lastView: (j['lastView'] as String?) ?? 'today',
+        lastListView: (j['lastListView'] as String?) ?? 'today',
         sort: (j['sort'] as String?) ?? 'updated',
         savedColors: (j['savedColors'] as List?)
                 ?.whereType<String>()

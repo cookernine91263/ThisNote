@@ -49,6 +49,16 @@ const noteFonts = <NoteFont>[
     label: '细黑',
     description: '思源细体 · 轻盈的呼吸',
   ),
+  NoteFont(
+    value: 'SmileySans',
+    label: '得意黑',
+    description: '得意黑 · 有性格的标题',
+  ),
+  NoteFont(
+    value: 'SourceHanMono',
+    label: '等宽',
+    description: '思源等宽 · 代码与表格',
+  ),
 ];
 
 String fontLabel(String? value, [List<CustomFont> customFonts = const []]) {

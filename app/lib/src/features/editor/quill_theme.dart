@@ -91,7 +91,8 @@ DefaultStyles buildQuillStyles(
     ),
     code: block(
       TextStyle(
-        fontFamily: 'monospace',
+        fontFamily: 'SourceHanMono',
+        fontFamilyFallback: const ['NotoSansSC', 'monospace'],
         fontSize: 14 * scale,
         height: 1.65,
         color: c.inkSoft,
@@ -129,7 +130,8 @@ DefaultStyles buildQuillStyles(
     ),
     inlineCode: InlineCodeStyle(
       style: TextStyle(
-        fontFamily: 'monospace',
+        fontFamily: 'SourceHanMono',
+        fontFamilyFallback: const ['NotoSansSC', 'monospace'],
         fontSize: 13.5 * scale,
         color: c.accent,
       ),

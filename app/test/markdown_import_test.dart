@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:this_note/src/features/editor/code_block.dart';
 import 'package:this_note/src/services/markdown_import.dart';
 
 void main() {
@@ -65,7 +66,10 @@ void main() {
       isTrue,
     );
     expect(
-      delta.any((op) => op['attributes']?['code-block'] == true),
+      delta.any(
+        (op) =>
+            op['insert'] is Map && op['insert'][codeBlockKey] != null,
+      ),
       isTrue,
     );
     expect(parsed.text.contains('code line'), isTrue);

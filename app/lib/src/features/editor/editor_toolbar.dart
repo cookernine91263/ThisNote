@@ -10,7 +10,8 @@ import '../../core/motion.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
 import '../../state/app_state.dart';
-import '../ai_sheet.dart';
+import '../ai_chat/ai_chat_panel.dart';
+import 'code_block.dart';
 import 'color_picker.dart';
 import 'font_picker.dart';
 import 'huazi.dart';
@@ -31,6 +32,8 @@ const Map<String, String> _en = <String, String>{
   '手写': 'Brush',
   '小薇': 'XiaoWei',
   '细黑': 'Light',
+  '得意黑': 'Smiley',
+  '等宽': 'Mono',
   '加粗 · Ctrl B': 'Bold · Ctrl B',
   '倾斜 · Ctrl I': 'Italic · Ctrl I',
   '变细': 'Light',
@@ -294,8 +297,21 @@ class EditorToolbar extends StatelessWidget {
           _ToolButton(
             icon: LucideIcons.code,
             tooltip: _t('代码块'),
-            active: has('code-block'),
-            onPressed: () => toggle(Attribute.codeBlock),
+            active: has('code-block') || selectionIsCodeBlock(controller),
+            onPressed: () {
+              final legacy = legacyCodeBlockAt(controller);
+              if (legacy != null) {
+                showCodeBlockDialog(
+                  context,
+                  controller,
+                  initial: CodeBlockData(code: legacy.code),
+                  legacyStart: legacy.start,
+                  legacyEnd: legacy.end,
+                );
+              } else {
+                showCodeBlockDialog(context, controller);
+              }
+            },
           ),
           _ToolButton(
             icon: LucideIcons.link,
@@ -330,7 +346,8 @@ class EditorToolbar extends StatelessWidget {
           _ToolButton(
             icon: LucideIcons.sparkles,
             tooltip: _t('AI 助手 · 润色 / 续写 / 起标题'),
-            onPressed: () => showAiSheet(context, session),
+            active: session.aiOpen,
+            onPressed: () => openAiChat(context, session),
           ),
           _HuaziButton(
             active: huazi,

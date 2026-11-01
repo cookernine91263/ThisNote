@@ -13,9 +13,17 @@ const Map<String, String> _en = <String, String>{
 String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
 
 class Seal extends StatelessWidget {
-  const Seal({super.key, this.size = 34, this.radius = 9});
+  const Seal({
+    super.key,
+    this.size = 34,
+    this.radius = 9,
+    this.ringColor,
+  });
   final double size;
   final double radius;
+
+  /// 印章内圈的描边色。默认取当前纸色，深浅色与自定义背景都能融进去。
+  final Color? ringColor;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +36,11 @@ class Seal extends StatelessWidget {
         color: Colors.transparent,
       ),
       child: CustomPaint(
-        painter: _InkMarkPainter(ink: c.ink, accent: c.accent),
+        painter: _InkMarkPainter(
+          ink: c.ink,
+          accent: c.accent,
+          ring: ringColor ?? c.paper,
+        ),
         size: Size.square(size),
       ),
     );
@@ -37,9 +49,14 @@ class Seal extends StatelessWidget {
 
 /// 一笔墨、一枚圆印。颜色跟随当前主题：浅色墨黑朱砂，深色米白暖红。
 class _InkMarkPainter extends CustomPainter {
-  _InkMarkPainter({required this.ink, required this.accent});
+  _InkMarkPainter({
+    required this.ink,
+    required this.accent,
+    required this.ring,
+  });
   final Color ink;
   final Color accent;
+  final Color ring;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -78,7 +95,7 @@ class _InkMarkPainter extends CustomPainter {
       Offset(s * 0.76, s * 0.66),
       s * 0.065,
       Paint()
-        ..color = const Color(0xFFFFF8EA).withValues(alpha: 0.5)
+        ..color = ring.withValues(alpha: 0.5)
         ..style = PaintingStyle.stroke
         ..strokeWidth = s * 0.012,
     );
@@ -102,7 +119,9 @@ class _InkMarkPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _InkMarkPainter oldDelegate) =>
-      oldDelegate.ink != ink || oldDelegate.accent != accent;
+      oldDelegate.ink != ink ||
+      oldDelegate.accent != accent ||
+      oldDelegate.ring != ring;
 }
 
 class SplashScreen extends StatefulWidget {

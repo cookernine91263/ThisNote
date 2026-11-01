@@ -1,3 +1,4 @@
+import argparse
 import os
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -5,6 +6,18 @@ OUT = r"F:\ThisNote\app\assets\brand"
 os.makedirs(OUT, exist_ok=True)
 SS = 4
 S = 1024
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--accent",
+    default="A84637",
+    help="印章底色（RRGGBB），与应用内强调色一致即可。",
+)
+args = parser.parse_args()
+_hex = args.accent.strip().lstrip("#")
+if len(_hex) != 6:
+    raise SystemExit("--accent 需要 6 位十六进制颜色，例如 A84637")
+ACCENT = tuple(int(_hex[i:i + 2], 16) for i in (0, 2, 4)) + (255,)
 
 
 def pi(v):
@@ -42,7 +55,7 @@ d = ImageDraw.Draw(img)
 d.rounded_rectangle(
     (sc(0.078), sc(0.078), sc(0.922), sc(0.922)),
     radius=pi(0.205),
-    fill=(168, 70, 55, 255),
+    fill=ACCENT,
 )
 # subtle inner hairline
 d.rounded_rectangle(

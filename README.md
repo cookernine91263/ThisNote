@@ -22,13 +22,16 @@
 
 - **中文 / English 界面**：引导页与设置里都能切换，切换后立即生效，笔记内容不会被改写
 - Word 式富文本：加粗 / 倾斜 / 变细 / 下划线 / 删除线 / 标题 1–3 / 引用 / 代码块 / 有序、无序、待办列表 / 对齐 / 缩进 / 文字颜色 / 高亮 / 链接 / 图片 / 分隔线
+- **代码块卡片**：选择 Python / C++ / HTML 等语言，正文里按语言实时高亮，可整块编辑、复制或删除
+- **待办勾选即删除线**：打勾后文字自动划掉，取消勾选自动恢复，导出 Word / PDF / HTML 也保留
+- **手机端手势**：底部液态导航；列表顶部直接切换今日 / 全部 / 标签 / 回收站；卡片 `⋯` 可置顶、收藏、复制或删除
 - **一键花字**：选中一句话，从 8 种花字气质中选择，立刻变为大字号文楷 + 专属颜色（小 / 中 / 大三档）
 - 查找替换（Ctrl/⌘ + F、Ctrl/⌘ + H）、标题大纲、选中字数、复制为 Markdown / 纯文本、粘贴为纯文本
 - **整理排版**：一键处理中英文之间的空格、半角标点、省略号与多余空格（有选区只整理选区）
 - 图片点开即可调宽度（25/50/75/100%）、左中右对齐、替换或删除；PDF / Word 导出会保留宽度与对齐
 - **截图直接粘贴**：剪贴板里只有图片时，点工具栏「粘贴图片」即可落到光标处（部分输入法会拦截 Ctrl/⌘ + V，所以保留了一个明确的按钮入口）
 - **拖拽**：把图片拖进窗口就插入当前笔记；把 `.md` / `.txt` 拖进来会直接导入成新笔记
-- 内置 6 种开源字体：思源黑体、思源宋体、霞鹜文楷、马善政毛笔、站酷小薇、思源细体；工具栏可直接切换并实时预览
+- 内置 8 种开源字体：思源黑体、思源宋体、霞鹜文楷、马善政毛笔、站酷小薇、思源细体、得意黑、思源等宽；工具栏可直接切换并实时预览
 - **导入自己的字体**：从本机挑一个 TTF / OTF，存进数据目录，重启后依然可用（只在这台设备上显示）
 - **写作时长**：按实际动笔累计，停顿超过一分钟不计入；旧笔记会用创建到修改的跨度做一次保守估计
 - **自定义色盘**：色相/明度轮盘、内置色、常用色收藏；文字色与高亮色都可自选
@@ -57,19 +60,20 @@
 
 ### 导出与数据
 
-- **Word (.docx)**：保留标题、粗斜体、颜色、列表、引用、图片与链接
-- **PDF**：A4 版式，嵌入中英日字体
+- **Word (.docx)**：真实列表编号、标题样式、待办删除线、代码块、引用、图片与链接
+- **PDF**：A4 版式，嵌入中英日字体；代码块使用等宽字体，待办勾选保留删除线
 - **PNG 长图 / 分页**：重新排版成可收藏的纸页，提供 4 种纸色、日期/标签开关与 3× 分辨率；长文可以自己决定导出几张、每一张截止在哪一段（断点还能前后微调），发到社交平台也不会被压糊
-- **HTML / Markdown / TXT**
-- 完整备份 zip（正文、图片、历史版本），一键恢复
+- **HTML / Markdown / TXT**：代码块保留语言，列表与待办导出为语义标签
+- 完整备份 zip（正文、图片、历史版本、AI 对话），一键恢复
 - **整库导出为 Markdown 文件夹**（图片与 `assets/` 一起带走）
-- **导入 Markdown / 纯文本**：标题、粗斜体、行内代码、链接、列表、引用、代码块、分隔线都会保留；也可以直接把文件拖进窗口
+- **导入 Markdown / 纯文本**：标题、粗斜体、行内代码、链接、列表、引用、代码块（含语言）、分隔线都会保留；也可以直接把文件拖进窗口
 - WebDAV 备份上传 / 恢复（自己的服务器或坚果云）
 
 ### AI（可选，默认关闭）
 
 - 任意 OpenAI 兼容接口（DeepSeek / OpenAI / 本地网关均可）
-- 润色、扩写、压缩、续写、起标题、生成提纲、英/日翻译
+- **多轮对话**：按笔记保存聊天记录，关掉再打开还在；可清空、重试、中途停止
+- 润色、扩写、压缩、续写、起标题、生成提纲、英/日翻译；结果可插入、替换选中或用作标题
 - **思考强度**：快 / 标准 / 深入三档，自己决定给模型多少时间与预算
 - **一键测试连通性**：只发一句「收到」，立刻知道地址、模型和 Key 有没有填对
 - 兼容思考型模型：只返回思考内容、网关不认 SSE 时会自动改用非流式再试一次
@@ -121,8 +125,8 @@
 
 当前环境已生成：
 
-- `dist/ThisNote-Setup-1.2.0.exe`（Windows x64 安装包）
-- `dist/ThisNote-Android-1.2.0-arm64.apk`（Android 8.0+ arm64，已签名）
+- `dist/ThisNote-Setup-1.3.0.exe`（Windows x64 安装包）
+- `dist/ThisNote-Android-1.3.0-arm64.apk`（Android 8.0+ arm64，已签名）
 - `dist/SHA256SUMS.txt`
 
 安装说明见 `dist/安装说明.txt`。
@@ -137,7 +141,7 @@
 | 存储 | 本地 JSON 文件（原子写入）+ 每篇独立文件 + 历史快照目录；无数据库依赖 |
 | 导出 | `pdf`、`archive`（OOXML zip）、`xml`，自行构建 DOCX / PDF |
 | 桌面 | `window_manager` 无边框窗口、自绘标题栏 |
-| 字体 | Noto Sans SC（Light/Regular/Bold）、Noto Serif SC、LXGW WenKai、Ma Shan Zheng、ZCOOL XiaoWei |
+| 字体 | Noto Sans SC（Light/Regular/Bold）、Noto Serif SC、LXGW WenKai、Ma Shan Zheng、ZCOOL XiaoWei、Smiley Sans、Source Han Mono |
 | 图标 | Lucide Icons |
 | 构建 | Windows：MSVC 2022 + Windows 11 SDK；Android：JDK 17 + Android SDK 36 + Gradle 9.3.1 |
 
@@ -182,7 +186,7 @@ flutter build windows --release
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" ..\installer\ThisNote.iss
-# 产物：dist/ThisNote-Setup-1.2.0.exe
+# 产物：dist/ThisNote-Setup-1.3.0.exe
 ```
 
 ### Android
@@ -261,6 +265,7 @@ data/
 - [Typora](https://typora.io/)：所见即所得的写作手感
 - [Lucide](https://lucide.dev/)：图标
 - [Noto Sans SC](https://fonts.google.com/noto/specimen/Noto+Sans+SC) 与 [LXGW WenKai](https://github.com/lxgw/LxgwWenKai)：字体
+- [Smiley Sans / 得意黑](https://github.com/atelier-anchor/smiley-sans) 与 [Source Han Mono / 思源等宽](https://github.com/adobe-fonts/source-han-mono)：字体
 
 「此记」没有复制上述项目的代码，只在产品结构与交互上做了借鉴；编辑器与导出实现基于 flutter_quill 及其公开 API。
 

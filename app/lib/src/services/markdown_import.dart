@@ -4,7 +4,10 @@
 /// 代码块、分隔线与空行。图片暂不落地（保留为文字，避免导入后出现坏链接）。
 library;
 
+import 'dart:convert';
+
 import '../core/i18n.dart';
+import '../features/editor/code_block.dart';
 
 /// 导入时的占位标题与相关提示。
 const _en = <String, String>{
@@ -37,20 +40,26 @@ ParsedMarkdown parseMarkdown(String source, {String? fallbackTitle}) {
   final lines = source.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
   final ops = <Map<String, dynamic>>[];
   final codeLines = <String>[];
+  String codeLang = '';
   String? title;
   var inCode = false;
 
   void flushCode() {
-    for (final line in codeLines) {
-      if (line.isNotEmpty) {
-        ops.add({'insert': line});
-      }
+    if (codeLines.isNotEmpty) {
       ops.add({
-        'insert': '\n',
-        'attributes': {'code-block': true},
+        'insert': {
+          codeBlockKey: jsonEncode(
+            CodeBlockData(
+              code: codeLines.join('\n'),
+              language: codeLang,
+            ).toJson(),
+          ),
+        },
       });
+      ops.add({'insert': '\n'});
     }
     codeLines.clear();
+    codeLang = '';
   }
 
   void blankLine() {
@@ -68,6 +77,8 @@ ParsedMarkdown parseMarkdown(String source, {String? fallbackTitle}) {
         inCode = false;
       } else {
         inCode = true;
+        final rest = line.trimLeft().substring(3).trim();
+        codeLang = rest.split(RegExp(r'\s+')).first.toLowerCase();
       }
       continue;
     }
@@ -147,12 +158,21 @@ ParsedMarkdown parseMarkdown(String source, {String? fallbackTitle}) {
     ops.add({'insert': '\n'});
   }
 
-  final text = ops
-      .where((op) => op['insert'] is String)
-      .map((op) => op['insert'] as String)
-      .join()
-      .replaceAll('\n', ' ')
-      .trim();
+  final textBuffer = StringBuffer();
+  for (final op in ops) {
+    final insert = op['insert'];
+    if (insert is String) {
+      textBuffer.write(insert);
+    } else if (insert is Map) {
+      final code = CodeBlockData.fromRaw(insert[codeBlockKey]);
+      if (code != null) {
+        textBuffer
+          ..write(code.code)
+          ..write(' ');
+      }
+    }
+  }
+  final text = textBuffer.toString().replaceAll('\n', ' ').trim();
 
   return ParsedMarkdown(
     title: (title == null || title.isEmpty) ? fallback : title,

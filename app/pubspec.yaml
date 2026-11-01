@@ -1,7 +1,7 @@
 name: this_note
 description: "此记 · ThisNote — 安静而强大的本地优先写作空间"
 publish_to: 'none'
-version: 1.2.0+4
+version: 1.3.0+5
 
 environment:
   sdk: ^3.13.0
@@ -40,6 +40,9 @@ dependencies:
   lucide_icons_flutter: ^4.0.1
   flutter_animate: ^4.5.2
 
+  # code blocks
+  highlight: ^0.7.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -74,3 +77,9 @@ flutter:
     - family: WenKai
       fonts:
         - asset: assets/fonts/LXGWWenKai-Regular.ttf
+    - family: SmileySans
+      fonts:
+        - asset: assets/fonts/SmileySans-Oblique.otf
+    - family: SourceHanMono
+      fonts:
+        - asset: assets/fonts/SourceHanMonoSC-Regular.otf

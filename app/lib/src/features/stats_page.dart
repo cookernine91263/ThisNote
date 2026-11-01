@@ -85,101 +85,239 @@ class StatsPage extends StatelessWidget {
         ? 0
         : (state.totalWords / state.activeNotes.length).round();
     final weekWords = days.fold(0, (s, d) => s + d.words);
-    final content = Column(
+    final compact = MediaQuery.sizeOf(context).width < 720;
+    final titleBlock = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _t('写作统计'),
-                  style: TextStyle(
-                    fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
-                    fontSize: I18n.isEn ? 26 : 30,
-                    fontWeight: I18n.isEn ? FontWeight.w600 : null,
-                    letterSpacing: I18n.isEn ? 0.3 : 2,
-                    color: c.ink,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  _t('不催促，只记录你走过的路'),
-                  style: TextStyle(
-                    fontFamily: 'NotoSansSC',
-                    fontSize: 10.5,
-                    color: c.inkMuted,
-                  ),
-                ),
-              ],
-            ),
-            const Spacer(),
+        Text(
+          _t('写作统计'),
+          style: TextStyle(
+            fontFamily: I18n.isEn ? 'NotoSansSC' : 'WenKai',
+            fontSize: I18n.isEn ? 26 : 30,
+            fontWeight: I18n.isEn ? FontWeight.w600 : null,
+            letterSpacing: I18n.isEn ? 0.3 : 2,
+            color: c.ink,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          _t('不催促，只记录你走过的路'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontFamily: 'NotoSansSC',
+            fontSize: 10.5,
+            color: c.inkMuted,
+          ),
+        ),
+      ],
+    );
+    final date = Text(
+      dateLabel(DateTime.now()),
+      style: TextStyle(
+        fontFamily: 'NotoSansSC',
+        fontSize: 10,
+        color: c.inkMuted,
+      ),
+    );
+    final summaryCard = PaperSurface(
+      padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
+      radius: 14,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionLabel(_t('写了什么')),
+          if (total == 0)
             Text(
-              dateLabel(DateTime.now()),
+              _t('还没有内容。'),
               style: TextStyle(
                 fontFamily: 'NotoSansSC',
-                fontSize: 10,
+                fontSize: 11,
+                color: c.inkMuted,
+              ),
+            )
+          else ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(5),
+              child: SizedBox(
+                height: 11,
+                child: Row(
+                  children: [
+                    if (state.diaryCount > 0)
+                      Expanded(
+                        flex: state.diaryCount,
+                        child: Container(color: c.accent),
+                      ),
+                    if (state.essayCount > 0)
+                      Expanded(
+                        flex: state.essayCount,
+                        child: Container(color: c.gold),
+                      ),
+                    if (state.noteCount > 0)
+                      Expanded(
+                        flex: state.noteCount,
+                        child: Container(color: c.sage),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _Legend(
+              color: c.accent,
+              label: _t('日记'),
+              count: state.diaryCount,
+            ),
+            _Legend(
+              color: c.gold,
+              label: _t('作文'),
+              count: state.essayCount,
+            ),
+            _Legend(
+              color: c.sage,
+              label: _t('随笔'),
+              count: state.noteCount,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _t('平均每篇 {avg} 字', {
+                'avg': _q(avg, '字', 'word'),
+              }),
+              style: TextStyle(
+                fontFamily: 'NotoSansSC',
+                fontSize: 9.5,
                 color: c.inkMuted,
               ),
             ),
           ],
-        ),
+        ],
+      ),
+    );
+    final tagsCard = PaperSurface(
+      padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
+      radius: 14,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionLabel(_t('常用的标签')),
+          if (state.tagCounts.isEmpty)
+            Text(
+              _t('给文字贴上第一个标签吧。'),
+              style: TextStyle(
+                fontFamily: 'NotoSansSC',
+                fontSize: 11,
+                color: c.inkMuted,
+              ),
+            )
+          else
+            Wrap(
+              spacing: 5,
+              runSpacing: 5,
+              children: [
+                for (final entry in state.tagCounts.entries.take(9))
+                  TagChip(
+                    label: entry.key,
+                    count: entry.value,
+                    onTap: () => state.selectTag(entry.key),
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (compact)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              titleBlock,
+              const SizedBox(height: 4),
+              date,
+            ],
+          )
+        else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              titleBlock,
+              const Spacer(),
+              date,
+            ],
+          ),
         const SizedBox(height: 20),
         Reveal(
           delay: const Duration(milliseconds: 60),
-          child: Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            _Metric(
-              icon: LucideIcons.penLine,
-              label: _t('总字数'),
-              value: '${state.totalWords}',
-              hint: _t('所有没有被丢掉的字'),
-            ),
-            _Metric(
-              icon: LucideIcons.library,
-              label: _t('总篇数'),
-              value: '${state.activeNotes.length}',
-              hint: _t('日记 {d} · 作文 {e} · 随笔 {n}', {
-                'd': state.diaryCount,
-                'e': state.essayCount,
-                'n': state.noteCount,
-              }),
-              onTap: () => state.setView('all'),
-            ),
-            _Metric(
-              icon: LucideIcons.flame,
-              label: _t('连续写作'),
-              value: '${state.streak}',
-              suffix: I18n.isEn
-                  ? ' ${I18n.plural(state.streak, _t('天'))}'
-                  : ' 天',
-              hint: state.streak > 0
-                  ? _t('保持住，哪怕只写一句')
-                  : _t('今天写下第一句吧'),
-            ),
-            _Metric(
-              icon: LucideIcons.target,
-              label: _t('今日进度'),
-              value: '${state.todayWords}',
-              suffix: ' / ${state.settings.dailyGoal}',
-              hint: state.todayWords >= state.settings.dailyGoal
-                  ? _t('今天的字数已经够了')
-                  : _t('还差 {n} 字', {
-                      'n': _q(
-                        math.max(
-                          0,
-                          state.settings.dailyGoal - state.todayWords,
-                        ),
-                        '字',
-                        'word',
-                      ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final available = constraints.maxWidth;
+              final columns = available >= 880
+                  ? 4
+                  : available >= 620
+                      ? 3
+                      : available >= 420
+                          ? 2
+                          : 1;
+              final metricWidth =
+                  (available - 10.0 * (columns - 1)) / columns;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _Metric(
+                    width: metricWidth,
+                    icon: LucideIcons.penLine,
+                    label: _t('总字数'),
+                    value: '${state.totalWords}',
+                    hint: _t('所有没有被丢掉的字'),
+                  ),
+                  _Metric(
+                    width: metricWidth,
+                    icon: LucideIcons.library,
+                    label: _t('总篇数'),
+                    value: '${state.activeNotes.length}',
+                    hint: _t('日记 {d} · 作文 {e} · 随笔 {n}', {
+                      'd': state.diaryCount,
+                      'e': state.essayCount,
+                      'n': state.noteCount,
                     }),
-            ),
-          ],
+                    onTap: () => state.setView('all'),
+                  ),
+                  _Metric(
+                    width: metricWidth,
+                    icon: LucideIcons.flame,
+                    label: _t('连续写作'),
+                    value: '${state.streak}',
+                    suffix: I18n.isEn
+                        ? ' ${I18n.plural(state.streak, _t('天'))}'
+                        : ' 天',
+                    hint: state.streak > 0
+                        ? _t('保持住，哪怕只写一句')
+                        : _t('今天写下第一句吧'),
+                  ),
+                  _Metric(
+                    width: metricWidth,
+                    icon: LucideIcons.target,
+                    label: _t('今日进度'),
+                    value: '${state.todayWords}',
+                    suffix: ' / ${state.settings.dailyGoal}',
+                    hint: state.todayWords >= state.settings.dailyGoal
+                        ? _t('今天的字数已经够了')
+                        : _t('还差 {n} 字', {
+                            'n': _q(
+                              math.max(
+                                0,
+                                state.settings.dailyGoal - state.todayWords,
+                              ),
+                              '字',
+                              'word',
+                            ),
+                          }),
+                  ),
+                ],
+              );
+            },
           ),
         ),
         const SizedBox(height: 14),
@@ -292,120 +430,27 @@ class StatsPage extends StatelessWidget {
         const SizedBox(height: 14),
         Reveal(
           delay: const Duration(milliseconds: 240),
-          child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: PaperSurface(
-                padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
-                radius: 14,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth < 620) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    SectionLabel(_t('写了什么')),
-                    if (total == 0)
-                      Text(
-                        _t('还没有内容。'),
-                        style: TextStyle(
-                          fontFamily: 'NotoSansSC',
-                          fontSize: 11,
-                          color: c.inkMuted,
-                        ),
-                      )
-                    else ...[
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(5),
-                        child: SizedBox(
-                          height: 11,
-                          child: Row(
-                            children: [
-                              if (state.diaryCount > 0)
-                                Expanded(
-                                  flex: state.diaryCount,
-                                  child: Container(color: c.accent),
-                                ),
-                              if (state.essayCount > 0)
-                                Expanded(
-                                  flex: state.essayCount,
-                                  child: Container(color: c.gold),
-                                ),
-                              if (state.noteCount > 0)
-                                Expanded(
-                                  flex: state.noteCount,
-                                  child: Container(color: c.sage),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _Legend(
-                        color: c.accent,
-                        label: _t('日记'),
-                        count: state.diaryCount,
-                      ),
-                      _Legend(
-                        color: c.gold,
-                        label: _t('作文'),
-                        count: state.essayCount,
-                      ),
-                      _Legend(
-                        color: c.sage,
-                        label: _t('随笔'),
-                        count: state.noteCount,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _t('平均每篇 {avg} 字', {
-                          'avg': _q(avg, '字', 'word'),
-                        }),
-                        style: TextStyle(
-                          fontFamily: 'NotoSansSC',
-                          fontSize: 9.5,
-                          color: c.inkMuted,
-                        ),
-                      ),
-                    ],
+                    summaryCard,
+                    const SizedBox(height: 12),
+                    tagsCard,
                   ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: PaperSurface(
-                padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
-                radius: 14,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SectionLabel(_t('常用的标签')),
-                    if (state.tagCounts.isEmpty)
-                      Text(
-                        _t('给文字贴上第一个标签吧。'),
-                        style: TextStyle(
-                          fontFamily: 'NotoSansSC',
-                          fontSize: 11,
-                          color: c.inkMuted,
-                        ),
-                      )
-                    else
-                      Wrap(
-                        spacing: 5,
-                        runSpacing: 5,
-                        children: [
-                          for (final entry in state.tagCounts.entries.take(9))
-                            TagChip(
-                              label: entry.key,
-                              count: entry.value,
-                              onTap: () => state.selectTag(entry.key),
-                            ),
-                        ],
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: summaryCard),
+                  const SizedBox(width: 12),
+                  Expanded(child: tagsCard),
+                ],
+              );
+            },
           ),
         ),
         const SizedBox(height: 24),
@@ -602,6 +647,7 @@ class _Metric extends StatelessWidget {
     required this.label,
     required this.value,
     required this.hint,
+    this.width = 205,
     this.suffix = '',
     this.onTap,
   });
@@ -611,6 +657,7 @@ class _Metric extends StatelessWidget {
   final String value;
   final String suffix;
   final String hint;
+  final double width;
   final VoidCallback? onTap;
 
   @override
@@ -624,7 +671,7 @@ class _Metric extends StatelessWidget {
           child: GestureDetector(
             onTap: onTap,
             child: SizedBox(
-              width: 205,
+              width: width,
               child: PaperSurface(
                 padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
                 radius: 12,
@@ -635,13 +682,17 @@ class _Metric extends StatelessWidget {
               children: [
                 Icon(icon, size: 12, color: c.accent),
                 const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontFamily: 'NotoSansSC',
-                    fontSize: 9.5,
-                    color: c.inkMuted,
-                    letterSpacing: 0.5,
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: 'NotoSansSC',
+                      fontSize: 9.5,
+                      color: c.inkMuted,
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
               ],
@@ -882,15 +933,18 @@ class _Legend extends StatelessWidget {
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 7),
-          Text(
-            label,
-            style: TextStyle(
-              fontFamily: 'NotoSansSC',
-              fontSize: 10.5,
-              color: c.inkSoft,
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'NotoSansSC',
+                fontSize: 10.5,
+                color: c.inkSoft,
+              ),
             ),
           ),
-          const Spacer(),
           Text(
             '$count',
             style: TextStyle(

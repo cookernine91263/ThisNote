@@ -290,14 +290,21 @@ class _Key extends StatelessWidget {
             alignment: Alignment.center,
             child: icon != null
                 ? Icon(icon, size: 18, color: color ?? c.inkSoft)
-                : Text(
-                    label!,
-                    style: TextStyle(
-                      fontFamily: 'NotoSansSC',
-                      fontSize: small ? 11 : 22,
-                      fontWeight: small ? FontWeight.w400 : FontWeight.w300,
-                      color: color ?? c.ink,
-                      height: 1,
+                : Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        label!,
+                        style: TextStyle(
+                          fontFamily: 'NotoSansSC',
+                          fontSize: small ? 11 : 22,
+                          fontWeight:
+                              small ? FontWeight.w400 : FontWeight.w300,
+                          color: color ?? c.ink,
+                          height: 1,
+                        ),
+                      ),
                     ),
                   ),
           ),

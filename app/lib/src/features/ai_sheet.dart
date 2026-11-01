@@ -8,6 +8,7 @@ import '../core/ui.dart';
 import '../data/models.dart';
 import '../services/ai_service.dart';
 import '../state/app_state.dart';
+import 'editor/code_block.dart';
 
 /// 文案以中文为源，英文放在 [_en] 里。
 /// [AiAction] 的 label / hint 也是中文原文，显示时再查这张表。
@@ -135,7 +136,7 @@ Future<void> showAiSheet(BuildContext context, EditorSession session) async {
   final state = context.read<AppState>();
   final ai = state.settings.aiSettings;
   if (!ai.configured) {
-    await _showConfigure(context, state);
+    await showAiConfigure(context, state);
     return;
   }
   final action = await showDialog<AiAction>(
@@ -147,7 +148,7 @@ Future<void> showAiSheet(BuildContext context, EditorSession session) async {
   await _runAction(context, state, session, action);
 }
 
-Future<void> _showConfigure(BuildContext context, AppState state) async {
+Future<bool?> showAiConfigure(BuildContext context, AppState state) async {
   final c = AppPalette.of(context);
   final go = await showDialog<bool>(
     context: context,
@@ -188,6 +189,7 @@ Future<void> _showConfigure(BuildContext context, AppState state) async {
     ),
   );
   if (go == true) state.setView('settings');
+  return go;
 }
 
 Future<void> _runAction(
@@ -199,9 +201,11 @@ Future<void> _runAction(
   final selection = session.controller.selection;
   final selected = selection.isCollapsed
       ? ''
-      : session.controller.document
-          .toPlainText()
-          .substring(selection.start, selection.end);
+      : deltaPlainText(
+          session.controller.document
+              .toDelta()
+              .slice(selection.start, selection.end - selection.start),
+        );
   if (action.needsSelection && selected.trim().isEmpty) {
     showToast(
       context,

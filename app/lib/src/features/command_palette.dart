@@ -12,6 +12,7 @@ import '../core/theme_reveal.dart';
 import '../core/ui.dart';
 import '../data/models.dart';
 import '../state/app_state.dart';
+import 'editor/code_block.dart';
 import 'export_sheet.dart';
 
 /// 文案以中文为源，英文放在 [_en] 里。
@@ -21,6 +22,7 @@ const Map<String, String> _en = <String, String>{
   '搜索命令、页面或动作…': 'Search commands, pages or actions…',
   '没有匹配的命令': 'No matching command',
   '选择': 'Select',
+  '点击选择': 'Tap to select',
   '打开': 'Open',
   '关闭': 'Close',
   '无题': 'Untitled',
@@ -39,6 +41,8 @@ const Map<String, String> _en = <String, String>{
   '全部笔记': 'All notes',
   '日历': 'Calendar',
   '标签': 'Tags',
+  '回收站': 'Trash',
+  '删除的文字会保留在这里': 'Deleted words stay here',
   '写作统计': 'Writing stats',
   '设置': 'Settings',
   '查找': 'Find',
@@ -53,6 +57,8 @@ const Map<String, String> _en = <String, String>{
   '无序列表': 'Bullet list',
   '有序列表': 'Numbered list',
   '引用': 'Quote',
+  '代码块': 'Code block',
+  '选择语言并高亮显示': 'Pick a language and highlight it',
   '外观：浅色': 'Appearance: Light',
   '外观：深色': 'Appearance: Dark',
   '外观：跟随系统': 'Appearance: System',
@@ -234,6 +240,13 @@ class _CommandDialogState extends State<_CommandDialog> {
         action: () => state.setView('tags'),
       ),
       _Command(
+        icon: LucideIcons.recycle,
+        label: _t('回收站'),
+        group: _t('前往'),
+        hint: _t('删除的文字会保留在这里'),
+        action: () => state.setView('trash'),
+      ),
+      _Command(
         icon: LucideIcons.chartNoAxesColumn,
         label: _t('写作统计'),
         group: _t('前往'),
@@ -328,6 +341,13 @@ class _CommandDialogState extends State<_CommandDialog> {
           label: _t('引用'),
           group: _t('格式'),
           action: () => _toggleFormat(session, Attribute.blockQuote),
+        ),
+        _Command(
+          icon: LucideIcons.code,
+          label: _t('代码块'),
+          group: _t('格式'),
+          hint: _t('选择语言并高亮显示'),
+          action: () => showCodeBlockDialog(context, session.controller),
         ),
       ],
       _Command(
@@ -513,17 +533,21 @@ class _CommandDialogState extends State<_CommandDialog> {
         ));
       }
     }
+    final mobile = MediaQuery.sizeOf(context).width < 900;
     return Dialog(
       backgroundColor: Colors.transparent,
       elevation: 0,
       insetPadding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: MediaQuery.sizeOf(context).height * 0.14,
-        bottom: 24,
+        left: mobile ? 12 : 24,
+        right: mobile ? 12 : 24,
+        top: mobile ? 16 : MediaQuery.sizeOf(context).height * 0.14,
+        bottom: mobile ? 12 : 24,
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 580),
+        constraints: BoxConstraints(
+          maxWidth: 580,
+          maxHeight: mobile ? MediaQuery.sizeOf(context).height * 0.82 : 900,
+        ),
         child: Container(
           decoration: BoxDecoration(
             color: c.surface,
@@ -607,29 +631,40 @@ class _CommandDialogState extends State<_CommandDialog> {
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                 child: Row(
                   children: [
-                    const Kbd('↑'),
-                    const SizedBox(width: 4),
-                    const Kbd('↓'),
-                    const SizedBox(width: 6),
-                    Text(
-                      _t('选择'),
-                      style: TextStyle(
-                        fontFamily: 'NotoSansSC',
-                        fontSize: 9.5,
-                        color: c.inkMuted,
+                    if (mobile)
+                      Text(
+                        _t('点击选择'),
+                        style: TextStyle(
+                          fontFamily: 'NotoSansSC',
+                          fontSize: 9.5,
+                          color: c.inkMuted,
+                        ),
+                      )
+                    else ...[
+                      const Kbd('↑'),
+                      const SizedBox(width: 4),
+                      const Kbd('↓'),
+                      const SizedBox(width: 6),
+                      Text(
+                        _t('选择'),
+                        style: TextStyle(
+                          fontFamily: 'NotoSansSC',
+                          fontSize: 9.5,
+                          color: c.inkMuted,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 14),
-                    const Kbd('Enter'),
-                    const SizedBox(width: 6),
-                    Text(
-                      _t('打开'),
-                      style: TextStyle(
-                        fontFamily: 'NotoSansSC',
-                        fontSize: 9.5,
-                        color: c.inkMuted,
+                      const SizedBox(width: 14),
+                      const Kbd('Enter'),
+                      const SizedBox(width: 6),
+                      Text(
+                        _t('打开'),
+                        style: TextStyle(
+                          fontFamily: 'NotoSansSC',
+                          fontSize: 9.5,
+                          color: c.inkMuted,
+                        ),
                       ),
-                    ),
+                    ],
                     const Spacer(),
                     Text(
                       _t('此记 · 命令面板'),

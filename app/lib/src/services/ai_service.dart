@@ -78,12 +78,19 @@ class AiService {
     required bool stream,
     required double temperature,
     required int maxTokens,
+    List<Map<String, String>> history = const [],
   }) => {
     'model': settings.model.trim().isEmpty
         ? 'deepseek-chat'
         : settings.model.trim(),
     'messages': [
       {'role': 'system', 'content': _system(system)},
+      for (final message in history)
+        if ((message['content'] ?? '').trim().isNotEmpty)
+          {
+            'role': message['role'] == 'assistant' ? 'assistant' : 'user',
+            'content': _safeText(message['content'] ?? ''),
+          },
       {'role': 'user', 'content': _safeText(user)},
     ],
     'temperature': temperature,
@@ -101,6 +108,7 @@ class AiService {
   Future<String> complete({
     required String system,
     required String user,
+    List<Map<String, String>> history = const [],
     double? temperature,
     int? maxTokens,
   }) async {
@@ -108,6 +116,7 @@ class AiService {
     final body = _body(
       system: system,
       user: user,
+      history: history,
       stream: false,
       temperature: temperature ?? _level.temperature,
       maxTokens: maxTokens ?? _level.maxTokens,
@@ -138,6 +147,7 @@ class AiService {
   Future<String> completeStream({
     required String system,
     required String user,
+    List<Map<String, String>> history = const [],
     required void Function(String partial) onDelta,
     double? temperature,
     int? maxTokens,
@@ -157,6 +167,7 @@ class AiService {
           _body(
             system: system,
             user: user,
+            history: history,
             stream: true,
             temperature: wantTemperature,
             maxTokens: wantTokens,
@@ -248,6 +259,7 @@ class AiService {
       final retry = await complete(
         system: system,
         user: user,
+        history: history,
         temperature: wantTemperature,
         maxTokens: wantTokens,
       );

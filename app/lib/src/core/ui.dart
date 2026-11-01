@@ -292,13 +292,17 @@ class SoftButton extends StatelessWidget {
                 Icon(icon, size: dense ? 14 : 16, color: fg),
                 const SizedBox(width: 6),
               ],
-              Text(
-                label,
-                style: TextStyle(
-                  color: fg,
-                  fontSize: dense ? 12 : 13,
-                  fontWeight: FontWeight.w500,
-                  fontFamily: 'NotoSansSC',
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: fg,
+                    fontSize: dense ? 12 : 13,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'NotoSansSC',
+                  ),
                 ),
               ),
             ],
@@ -355,17 +359,20 @@ class SectionLabel extends StatelessWidget {
       padding: padding ?? const EdgeInsets.only(left: 4, right: 4, bottom: 10),
       child: Row(
         children: [
-          Text(
-            text,
-            style: TextStyle(
-              fontFamily: 'NotoSansSC',
-              fontSize: 11,
-              letterSpacing: 1.6,
-              color: c.inkMuted,
-              fontWeight: FontWeight.w500,
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'NotoSansSC',
+                fontSize: 11,
+                letterSpacing: 1.6,
+                color: c.inkMuted,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
-          const Spacer(),
           ?trailing,
         ],
       ),

@@ -18,9 +18,11 @@ import '../data/activity.dart';
 import '../data/models.dart';
 import '../data/repository.dart';
 import '../data/templates.dart';
+import '../features/editor/code_block.dart';
 import '../features/editor/huazi.dart';
 import '../services/clipboard_image.dart';
 import '../services/markdown_import.dart';
+import 'ai_chat.dart';
 
 /// 只在状态层生成的几条文案（新建文件夹、副本、导入占位标题）。
 const _en = <String, String>{
@@ -72,7 +74,13 @@ class AppState extends ChangeNotifier {
     activity = await store.loadActivity();
     await store.seedIfEmpty(notes);
     notes = await store.loadLibrary();
+    const listViews = {'today', 'all', 'tags', 'trash', 'search'};
+    if (!listViews.contains(settings.lastListView)) {
+      settings.lastListView = 'today';
+    }
     view = settings.lastView;
+    // 回收站和搜索只是临时视图：重启后回到上次的列表，避免一开机就停在回收站。
+    if (view == 'trash' || view == 'search') view = settings.lastListView;
     if (!const ['today', 'all', 'calendar', 'tags', 'stats', 'trash', 'search']
         .contains(view)) {
       view = 'today';
@@ -266,7 +274,14 @@ class AppState extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   void setView(String v) {
-    if (view == v && tagFilter == null && folderFilter == null) return;
+    const listViews = {'today', 'all', 'tags', 'trash', 'search'};
+    final listChanged =
+        listViews.contains(v) && settings.lastListView != v;
+    if (listViews.contains(v)) settings.lastListView = v;
+    if (view == v && tagFilter == null && folderFilter == null) {
+      if (listChanged) store.saveSettings(settings);
+      return;
+    }
     view = v;
     tagFilter = null;
     folderFilter = null;
@@ -276,6 +291,9 @@ class AppState extends ChangeNotifier {
     store.saveSettings(settings);
     _notify();
   }
+
+  /// 手机底部「笔记」tab 回到这里。
+  String get listView => settings.lastListView;
 
   void selectTag(String tag) {
     view = 'tags';
@@ -1023,6 +1041,12 @@ class EditorSession extends ChangeNotifier {
     _lastEditAt = DateTime.now();
     // 记下「今天第一次打开这篇时」的字数，续写才算得出今天新增了多少。
     app.activity.startSession(dayKey(DateTime.now()), note.id, words);
+    aiChat = AiChatController(
+      store: app.store,
+      noteId: note.id,
+      settings: app.settings.aiSettings,
+    );
+    unawaited(aiChat.load());
     _snapshotTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       if (dirty) flush(snapshot: true);
     });
@@ -1035,6 +1059,15 @@ class EditorSession extends ChangeNotifier {
   final FocusNode editorFocus = FocusNode();
   final FocusNode titleFocus = FocusNode();
   final ScrollController scrollController = ScrollController();
+
+  late final AiChatController aiChat;
+  bool aiOpen = false;
+
+  void setAiOpen(bool open) {
+    if (aiOpen == open) return;
+    aiOpen = open;
+    notifyListeners();
+  }
 
   Timer? _debounce;
   Timer? _snapshotTimer;
@@ -1061,6 +1094,8 @@ class EditorSession extends ChangeNotifier {
 
   /// 文档每改一次自增，用来复用字数/纯文本的计算结果。
   int _revision = 0;
+
+  int get revision => _revision;
   int _wordsRevision = -1;
   int _wordsCache = 0;
   int _plainRevision = -1;
@@ -1069,7 +1104,9 @@ class EditorSession extends ChangeNotifier {
   int get words {
     if (_wordsRevision != _revision) {
       _wordsRevision = _revision;
-      _wordsCache = countWords(controller.document.toPlainText());
+      _wordsCache = countWords(
+        deltaPlainText(controller.document.toDelta()),
+      );
     }
     return _wordsCache;
   }
@@ -1373,7 +1410,8 @@ class EditorSession extends ChangeNotifier {
   String get plainText {
     if (_plainRevision != _revision) {
       _plainRevision = _revision;
-      _plainCache = controller.document.toPlainText().trimRight();
+      _plainCache =
+          deltaPlainText(controller.document.toDelta()).trimRight();
     }
     return _plainCache;
   }
@@ -1555,6 +1593,7 @@ class EditorSession extends ChangeNotifier {
   void dispose() {
     _debounce?.cancel();
     _snapshotTimer?.cancel();
+    aiChat.dispose();
     controller.removeListener(_onEditorChanged);
     titleController.removeListener(_onTitleChanged);
     controller.dispose();

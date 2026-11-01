@@ -23,13 +23,16 @@ The interface can be switched between **中文 and English** at any time — on 
 ### Writing
 
 - Word-style rich text: bold / italic / light / underline / strikethrough / headings 1–3 / quote / code block / numbered, bulleted and to-do lists / alignment / indent / text color / highlight / links / images / dividers
+- **Code-block cards**: pick Python / C++ / HTML and the code is highlighted live; edit, copy or delete the whole block
+- **Checked to-dos get a strikethrough** automatically and lose it when unchecked; Word / PDF / HTML exports keep it
+- **Phone gestures**: a liquid bottom bar; switch Today / All / Tags / Trash right from the list header; the card `⋯` menu pins, favorites, duplicates or deletes
 - **Flower Text** (花字): select a sentence, choose one of eight typographic moods, and it becomes large WenKai type in its own color (small / medium / large)
 - Find & replace (Ctrl/⌘ + F, Ctrl/⌘ + H), heading outline, selected-word count, copy as Markdown / plain text, paste as plain text
 - **Tidy typography**: one tap fixes spacing between Chinese and Latin text, half-width punctuation, ellipses and redundant spaces (only the selection, when there is one)
 - Click any image to set its width (25/50/75/100%), align left/center/right, replace or delete it; PDF / Word exports keep the width and alignment
 - **Paste a screenshot directly**: when the clipboard holds only an image, use “Paste image” in the toolbar (some IMEs swallow Ctrl/⌘ + V, so there is an explicit button too)
 - **Drag & drop**: drop images into the window to insert them; drop `.md` / `.txt` files to import them as notes
-- Six bundled open-source fonts: Noto Sans SC, Noto Serif SC, LXGW WenKai, Ma Shan Zheng, ZCOOL XiaoWei and Noto Sans SC Light; switch and preview them from the toolbar
+- Eight bundled open-source fonts: Noto Sans SC, Noto Serif SC, LXGW WenKai, Ma Shan Zheng, ZCOOL XiaoWei, Noto Sans SC Light, Smiley Sans and Source Han Mono; switch and preview them from the toolbar
 - **Import your own fonts**: pick a TTF / OTF from this machine; it is copied into the data folder and still there after a restart (this device only)
 - **Writing time**: counted from actual typing, pauses longer than a minute are skipped; older notes get a conservative estimate from creation to last edit
 - **Custom color wheel**: hue/lightness wheel, built-in swatches and saved colors; both text color and highlight color are yours to pick
@@ -58,19 +61,20 @@ The interface can be switched between **中文 and English** at any time — on 
 
 ### Export and data
 
-- **Word (.docx)**: keeps headings, bold/italic, colors, lists, quotes, images and links
-- **PDF**: A4 layout with embedded Chinese, English and Japanese fonts
+- **Word (.docx)**: real list numbering, heading styles, checked-to-do strikethrough, code blocks, quotes, images and links
+- **PDF**: A4 layout with embedded Chinese, English and Japanese fonts; code blocks use a monospace face and checked to-dos keep their strikethrough
 - **PNG long image / pages**: re-typeset as a keepsake page with four paper colors, date/tag toggles and 3× resolution; for a long piece you choose how many images to make and where each one ends (breaks can be nudged per paragraph), so social apps cannot blur it into mush
-- **HTML / Markdown / TXT**
-- Full zip backup (text, images, version history) with one-click restore
+- **HTML / Markdown / TXT**: code blocks keep their language; lists and to-dos become semantic markup
+- Full zip backup (text, images, version history, AI chats) with one-click restore
 - **Export the whole library as a Markdown folder** (images and `assets/` included)
-- **Import Markdown / plain text**: headings, bold/italic, inline code, links, lists, quotes, code blocks and dividers are preserved; you can also drop files onto the window
+- **Import Markdown / plain text**: headings, bold/italic, inline code, links, lists, quotes, code blocks (with language) and dividers are preserved; you can also drop files onto the window
 - WebDAV backup upload / restore (your own server or Jianguoyun)
 
 ### AI (optional, off by default)
 
 - Any OpenAI-compatible endpoint (DeepSeek / OpenAI / a local gateway)
-- Polish, expand, condense, continue, title, outline, English/Japanese translation
+- **Multi-turn chat** saved per note, still there after you close and reopen it; clear, retry or stop at any time
+- Polish, expand, condense, continue, title, outline, English/Japanese translation; insert, replace the selection or use as the title
 - **Thinking level**: Fast / Standard / Deep — you decide how much time and budget the model gets
 - **One-click connection test**: sends a single word, so you instantly know whether the endpoint, model and key are right
 - Friendly to reasoning models: a reasoning-only reply or a gateway that ignores SSE falls back to a non-streaming retry
@@ -120,8 +124,8 @@ Say hi in the comments — I will answer.
 
 Already built in this environment:
 
-- `dist/ThisNote-Setup-1.2.0.exe` (Windows x64 installer)
-- `dist/ThisNote-Android-1.2.0-arm64.apk` (Android 8.0+ arm64, signed)
+- `dist/ThisNote-Setup-1.3.0.exe` (Windows x64 installer)
+- `dist/ThisNote-Android-1.3.0-arm64.apk` (Android 8.0+ arm64, signed)
 - `dist/SHA256SUMS.txt`
 
 See `dist/安装说明.txt` for installation notes.
@@ -136,7 +140,7 @@ See `dist/安装说明.txt` for installation notes.
 | Storage | local JSON files (atomic writes) + one file per note + history snapshots; no database dependency |
 | Export | `pdf`, `archive` (OOXML zip), `xml`; DOCX / PDF built in-house |
 | Desktop | `window_manager` frameless window with a custom title bar |
-| Fonts | Noto Sans SC (Light/Regular/Bold), Noto Serif SC, LXGW WenKai, Ma Shan Zheng, ZCOOL XiaoWei |
+| Fonts | Noto Sans SC (Light/Regular/Bold), Noto Serif SC, LXGW WenKai, Ma Shan Zheng, ZCOOL XiaoWei, Smiley Sans, Source Han Mono |
 | Icons | Lucide Icons |
 | Build | Windows: MSVC 2022 + Windows 11 SDK; Android: JDK 17 + Android SDK 36 + Gradle 9.3.1 |
 
@@ -181,7 +185,7 @@ Installer:
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" ..\installer\ThisNote.iss
-# output: dist/ThisNote-Setup-1.2.0.exe
+# output: dist/ThisNote-Setup-1.3.0.exe
 ```
 
 ### Android
@@ -258,6 +262,7 @@ This project stands on the shoulders of many open-source projects:
 - [Typora](https://typora.io/): the what-you-see-is-what-you-get writing feel
 - [Lucide](https://lucide.dev/): icons
 - [Noto Sans SC](https://fonts.google.com/noto/specimen/Noto+Sans+SC) and [LXGW WenKai](https://github.com/lxgw/LxgwWenKai): fonts
+- [Smiley Sans](https://github.com/atelier-anchor/smiley-sans) and [Source Han Mono](https://github.com/adobe-fonts/source-han-mono): fonts
 
 ThisNote does not copy code from the projects above; it only borrows product structure and interaction ideas. The editor and export implementations are built on flutter_quill and its public API.
 

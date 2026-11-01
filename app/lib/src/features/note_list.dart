@@ -12,6 +12,7 @@ import '../core/theme.dart';
 import '../core/ui.dart';
 import '../data/models.dart';
 import '../state/app_state.dart';
+import 'command_palette.dart';
 import 'folder_tree.dart';
 import 'new_note_sheet.dart';
 
@@ -265,7 +266,12 @@ class _NoteListPanelState extends State<NoteListPanel> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(20, widget.embedded ? 8 : 18, 14, 10),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            widget.embedded ? 6 : 18,
+            10,
+            8,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -287,7 +293,11 @@ class _NoteListPanelState extends State<NoteListPanel> {
                                       state.view == 'today' && !I18n.isEn
                                           ? 'WenKai'
                                           : 'NotoSansSC',
-                                  fontSize: state.view == 'today' ? 24 : 20,
+                                  fontSize: state.view == 'today'
+                                      ? 24
+                                      : widget.embedded
+                                          ? 22
+                                          : 20,
                                   fontWeight: FontWeight.w600,
                                   letterSpacing: state.view == 'today'
                                       ? 1
@@ -318,7 +328,7 @@ class _NoteListPanelState extends State<NoteListPanel> {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontFamily: 'NotoSansSC',
-                                fontSize: 10.5,
+                                fontSize: widget.embedded ? 11 : 10.5,
                                 color: c.inkMuted,
                                 letterSpacing: 0.2,
                               ),
@@ -348,6 +358,15 @@ class _NoteListPanelState extends State<NoteListPanel> {
                     size: 30,
                     onPressed: () => showNewNoteSheet(context),
                   ),
+                  if (widget.embedded) ...[
+                    const SizedBox(width: 2),
+                    SoftIconButton(
+                      icon: LucideIcons.ellipsisVertical,
+                      tooltip: _t('更多'),
+                      size: 30,
+                      onPressed: () => _showMobileMenu(context, state),
+                    ),
+                  ],
                 ],
               ),
               AnimatedSize(
@@ -402,6 +421,7 @@ class _NoteListPanelState extends State<NoteListPanel> {
             ],
           ),
         ),
+        if (widget.embedded) _mobileScopes(context, state),
         if (state.view == 'all') FolderTree(state: state),
         if (state.view == 'tags' && state.allTags.isNotEmpty)
           Padding(
@@ -428,43 +448,48 @@ class _NoteListPanelState extends State<NoteListPanel> {
         if (state.view == 'all')
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 0, 12, 8),
-            child: Row(
-              children: [
-                for (final s in [
-                  ('updated', _t('最近')),
-                  ('created', _t('创建')),
-                  ('title', _t('标题')),
-                  ('words', _t('字数')),
-                  ('manual', _t('手动')),
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 2),
-                    child: GestureDetector(
-                      onTap: () => state.setSort(s.$1),
-                      child: AnimatedContainer(
-                        duration: Motion.fast,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: state.sort == s.$1
-                              ? c.ink
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          s.$2,
-                          style: TextStyle(
-                            fontFamily: 'NotoSansSC',
-                            fontSize: 10.5,
-                            color: state.sort == s.$1 ? c.paper : c.inkMuted,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final s in [
+                    ('updated', _t('最近')),
+                    ('created', _t('创建')),
+                    ('title', _t('标题')),
+                    ('words', _t('字数')),
+                    ('manual', _t('手动')),
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.only(right: 2),
+                      child: GestureDetector(
+                        onTap: () => state.setSort(s.$1),
+                        child: AnimatedContainer(
+                          duration: Motion.fast,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: state.sort == s.$1
+                                ? c.ink
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            s.$2,
+                            maxLines: 1,
+                            style: TextStyle(
+                              fontFamily: 'NotoSansSC',
+                              fontSize: 10.5,
+                              color:
+                                  state.sort == s.$1 ? c.paper : c.inkMuted,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         Expanded(
@@ -511,19 +536,28 @@ class _NoteListPanelState extends State<NoteListPanel> {
                       onAcceptWithDetails: (_) => _commitDrop(),
                       builder: (context, candidate, rejected) => Scrollbar(
                         child: ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(10, 2, 10, 20),
+                          padding: EdgeInsets.fromLTRB(
+                            widget.embedded ? 12 : 10,
+                            4,
+                            widget.embedded ? 12 : 10,
+                            24,
+                          ),
                           itemCount: list.length,
                           itemBuilder: (context, i) {
                             final item = list[i];
                             if (item is _GroupHeader) {
                               return Padding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(10, 14, 10, 7),
+                                padding: EdgeInsets.fromLTRB(
+                                  10,
+                                  widget.embedded ? 18 : 14,
+                                  10,
+                                  7,
+                                ),
                                 child: Text(
                                   item.label,
                                   style: TextStyle(
                                     fontFamily: 'NotoSansSC',
-                                    fontSize: 10,
+                                    fontSize: widget.embedded ? 11 : 10,
                                     letterSpacing: 1.2,
                                     color: c.inkMuted,
                                   ),
@@ -588,7 +622,8 @@ class _NoteListPanelState extends State<NoteListPanel> {
             ),
           ),
         ),
-        Container(
+        if (!widget.embedded)
+          Container(
           decoration: BoxDecoration(
             border: Border(top: BorderSide(color: c.line)),
           ),
@@ -645,6 +680,145 @@ class _NoteListPanelState extends State<NoteListPanel> {
       ),
       child: content,
     );
+  }
+
+  Widget _mobileScopes(BuildContext context, AppState state) {
+    final items = <({String view, String label, IconData icon})>[
+      (view: 'today', label: _t('今日'), icon: LucideIcons.sun),
+      (view: 'all', label: _t('全部'), icon: LucideIcons.library),
+      (view: 'tags', label: _t('标签'), icon: LucideIcons.tag),
+      (view: 'trash', label: _t('回收站'), icon: LucideIcons.recycle),
+    ];
+    return SizedBox(
+      height: 38,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        itemCount: items.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 6),
+        itemBuilder: (context, i) {
+          final item = items[i];
+          return _ScopeChip(
+            icon: item.icon,
+            label: item.label,
+            selected: state.view == item.view,
+            onTap: () => state.setView(item.view),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showMobileMenu(BuildContext context, AppState state) async {
+    final c = AppPalette.of(context);
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: c.surface,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 0, 22, 6),
+              child: Text(
+                '${I18n.count(state.activeNotes.length, '篇', 'note')} · '
+                '${I18n.count(state.totalWords, '字', 'word')}',
+                style: TextStyle(
+                  fontFamily: 'NotoSansSC',
+                  fontSize: 10,
+                  color: c.inkMuted,
+                ),
+              ),
+            ),
+            _MobileMenuRow(
+              icon: LucideIcons.library,
+              label: _t('全部笔记'),
+              onTap: () => Navigator.of(context).pop('all'),
+            ),
+            _MobileMenuRow(
+              icon: LucideIcons.tag,
+              label: _t('标签'),
+              onTap: () => Navigator.of(context).pop('tags'),
+            ),
+            _MobileMenuRow(
+              icon: LucideIcons.recycle,
+              label: _t('回收站'),
+              hint: state.trashedNotes.isEmpty
+                  ? null
+                  : '${state.trashedNotes.length}',
+              onTap: () => Navigator.of(context).pop('trash'),
+            ),
+            _MobileMenuRow(
+              icon: LucideIcons.command,
+              label: _t('命令面板'),
+              hint: 'Ctrl K',
+              onTap: () => Navigator.of(context).pop('palette'),
+            ),
+            _MobileMenuRow(
+              icon: LucideIcons.search,
+              label: _t('搜索'),
+              onTap: () => Navigator.of(context).pop('search'),
+            ),
+            _MobileMenuRow(
+              icon: LucideIcons.chartNoAxesColumn,
+              label: _t('写作统计'),
+              onTap: () => Navigator.of(context).pop('stats'),
+            ),
+            _MobileMenuRow(
+              icon: LucideIcons.settings,
+              label: _t('设置'),
+              onTap: () => Navigator.of(context).pop('settings'),
+            ),
+            _MobileMenuRow(
+              icon: LucideIcons.plus,
+              label: _t('新建笔记'),
+              onTap: () => Navigator.of(context).pop('new'),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 10, 22, 14),
+              child: Text(
+                _t('长按卡片可拖动排序'),
+                style: TextStyle(
+                  fontFamily: 'NotoSansSC',
+                  fontSize: 9.5,
+                  color: c.inkMuted,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action == null || !context.mounted) return;
+    switch (action) {
+      case 'all':
+        state.setView('all');
+        break;
+      case 'tags':
+        state.setView('tags');
+        break;
+      case 'trash':
+        state.setView('trash');
+        break;
+      case 'palette':
+        showCommandPalette(context);
+        break;
+      case 'search':
+        if (!_searching) _toggleSearch();
+        break;
+      case 'stats':
+        state.setView('stats');
+        break;
+      case 'settings':
+        state.setView('settings');
+        break;
+      case 'new':
+        showNewNoteSheet(context);
+        break;
+    }
   }
 
   Widget _empty(BuildContext context, AppState state) {
@@ -737,6 +911,7 @@ class _NoteCardContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
+    final mobile = MediaQuery.sizeOf(context).width < 900;
     final mood = MoodX.fromScore(meta.mood);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -747,7 +922,11 @@ class _NoteCardContent extends StatelessWidget {
             if (meta.pinned)
               Padding(
                 padding: const EdgeInsets.only(top: 3, right: 5),
-                child: Icon(LucideIcons.pin, size: 11, color: c.accent),
+                child: Icon(
+                  LucideIcons.pin,
+                  size: mobile ? 12 : 11,
+                  color: c.accent,
+                ),
               ),
             Expanded(
               child: Text(
@@ -756,7 +935,7 @@ class _NoteCardContent extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontFamily: 'NotoSansSC',
-                  fontSize: 13.5,
+                  fontSize: mobile ? 14.5 : 13.5,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                   color: c.ink,
                   height: 1.35,
@@ -767,41 +946,50 @@ class _NoteCardContent extends StatelessWidget {
               MouseRegion(
                 cursor: SystemMouseCursors.click,
                 child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTapDown: (d) => onMore!(d.globalPosition),
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 4, top: 1),
-                    child: Icon(
-                      LucideIcons.ellipsis,
-                      size: 15,
-                      color: c.inkMuted,
+                  child: SizedBox(
+                    width: mobile ? 36 : 20,
+                    height: mobile ? 30 : 18,
+                    child: Align(
+                      alignment: Alignment.topRight,
+                      child: Icon(
+                        LucideIcons.ellipsis,
+                        size: mobile ? 17 : 15,
+                        color: c.inkMuted,
+                      ),
                     ),
                   ),
                 ),
               ),
           ],
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: mobile ? 5 : 4),
         Text(
           meta.excerpt.isEmpty ? _t('还没有写下正文') : meta.excerpt,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontFamily: 'NotoSansSC',
-            fontSize: 11.5,
+            fontSize: mobile ? 12.5 : 11.5,
             height: 1.6,
             color: meta.excerpt.isEmpty ? c.inkMuted : c.inkSoft,
           ),
         ),
-        const SizedBox(height: 7),
+        SizedBox(height: mobile ? 8 : 7),
         Row(
           children: [
-            Icon(kindIcon(meta.kind), size: 10, color: c.inkMuted),
+            Icon(
+              kindIcon(meta.kind),
+              size: mobile ? 11 : 10,
+              color: c.inkMuted,
+            ),
             const SizedBox(width: 4),
             Text(
               shortDate(meta.createdAt),
               style: TextStyle(
                 fontFamily: 'NotoSansSC',
-                fontSize: 9.5,
+                fontSize: mobile ? 10.5 : 9.5,
                 color: c.inkMuted,
               ),
             ),
@@ -812,7 +1000,7 @@ class _NoteCardContent extends StatelessWidget {
               I18n.count(meta.words, '字', 'word'),
               style: TextStyle(
                 fontFamily: 'NotoSansSC',
-                fontSize: 9.5,
+                fontSize: mobile ? 10.5 : 9.5,
                 color: c.inkMuted,
               ),
             ),
@@ -822,14 +1010,18 @@ class _NoteCardContent extends StatelessWidget {
                 mood.emoji,
                 style: TextStyle(
                   fontFamily: 'NotoSansSC',
-                  fontSize: 10,
+                  fontSize: mobile ? 11 : 10,
                   color: mood.color,
                 ),
               ),
             ],
             const Spacer(),
             if (meta.favorite)
-              Icon(LucideIcons.heart, size: 10, color: c.accent),
+              Icon(
+                LucideIcons.heart,
+                size: mobile ? 11 : 10,
+                color: c.accent,
+              ),
             if (meta.tags.isNotEmpty) ...[
               const SizedBox(width: 6),
               Flexible(
@@ -839,7 +1031,7 @@ class _NoteCardContent extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontFamily: 'NotoSansSC',
-                    fontSize: 9,
+                    fontSize: mobile ? 10 : 9,
                     color: c.inkMuted,
                   ),
                 ),
@@ -913,10 +1105,10 @@ class _NoteGhostState extends State<_NoteGhost>
       child: SizedBox(
         width: widget.width,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 11, 10, 10),
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
           decoration: BoxDecoration(
             color: c.surface,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: c.accent.withValues(alpha: 0.4)),
             boxShadow: [
               BoxShadow(
@@ -943,15 +1135,15 @@ class _DragSlot extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 6),
       child: IgnorePointer(
         child: Opacity(
           opacity: 0.45,
           child: Container(
-            padding: const EdgeInsets.fromLTRB(12, 11, 10, 10),
+            padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
             decoration: BoxDecoration(
               color: c.surface,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: c.accent.withValues(alpha: 0.35)),
               boxShadow: [
                 BoxShadow(
@@ -1015,8 +1207,14 @@ class _NoteCardState extends State<NoteCard> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final state = context.read<AppState>();
+        final wide = MediaQuery.sizeOf(context).width >= 900;
+        final desktop = const {
+          TargetPlatform.windows,
+          TargetPlatform.linux,
+          TargetPlatform.macOS,
+        }.contains(Theme.of(context).platform);
         final card = Padding(
-          padding: const EdgeInsets.only(bottom: 4),
+          padding: EdgeInsets.only(bottom: wide ? 4 : 6),
           child: HoverBuilder(
             cursor: widget.view == 'trash'
                 ? SystemMouseCursors.click
@@ -1045,10 +1243,15 @@ class _NoteCardState extends State<NoteCard> {
                 child: AnimatedContainer(
                   duration: Motion.fast,
                   curve: Motion.enter,
-                  padding: const EdgeInsets.fromLTRB(12, 11, 10, 10),
+                  padding: EdgeInsets.fromLTRB(
+                    wide ? 12 : 14,
+                    wide ? 11 : 12,
+                    wide ? 10 : 12,
+                    wide ? 10 : 12,
+                  ),
                   decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(wide ? 10 : 12),
                     border: Border.all(
                       color: widget.dropTarget
                           ? c.accent.withValues(alpha: 0.6)
@@ -1070,7 +1273,7 @@ class _NoteCardState extends State<NoteCard> {
                   child: _NoteCardContent(
                     meta: meta,
                     selected: widget.selected,
-                    showMore: hovered || widget.selected,
+                    showMore: hovered || widget.selected || !desktop,
                     onMore: (position) =>
                         _showContextMenu(context, state, meta, position),
                   ),
@@ -1098,12 +1301,6 @@ class _NoteCardState extends State<NoteCard> {
 
         // 桌面上用鼠标拖东西，不应该先按住不动 300ms；
         // 300ms 长按只留给触屏，用来和列表滚动区分开。
-        final desktop = const {
-          TargetPlatform.windows,
-          TargetPlatform.linux,
-          TargetPlatform.macOS,
-        }.contains(Theme.of(context).platform);
-
         if (desktop) {
           return Draggable<String>(
             data: 'note:${meta.id}',
@@ -1134,6 +1331,15 @@ class _NoteCardState extends State<NoteCard> {
     NoteMeta meta,
     Offset position,
   ) {
+    final desktop = const {
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+      TargetPlatform.macOS,
+    }.contains(Theme.of(context).platform);
+    if (!desktop) {
+      _showActionsSheet(context, state, meta);
+      return;
+    }
     final c = AppPalette.of(context);
     showMenu<String>(
       context: context,
@@ -1162,50 +1368,146 @@ class _NoteCardState extends State<NoteCard> {
           PopupMenuItem(value: 'purge', child: Text(_t('永久删除'))),
         ],
       ],
-    ).then((value) async {
-      if (!context.mounted || value == null) return;
-      switch (value) {
-        case 'pin':
-          await state.togglePin(meta);
-          break;
-        case 'fav':
-          await state.toggleFavorite(meta);
-          break;
-        case 'trash':
-          widget.onRequestTrash?.call(meta);
-          break;
-        case 'restore':
-          await state.restoreNote(meta.id);
-          if (context.mounted) {
-            showToast(
-              context,
-              _t('已恢复到原来的位置'),
-              icon: LucideIcons.recycle,
-            );
-          }
-          break;
-        case 'purge':
-          if (await showConfirm(
-            context,
-            title: _t('永久删除？'),
-            message: _t('这篇文字将无法恢复。'),
-            danger: true,
-            confirmLabel: _t('删除'),
-          )) {
-            await state.purgeNote(meta.id);
-          }
-          break;
-        case 'duplicate':
-          final copy = await state.duplicateNote(meta.id);
-          if (copy != null && context.mounted) {
-            showToast(context, _t('已复制一份'), icon: LucideIcons.copy);
-          }
-          break;
-        case 'export':
-          showToast(context, _t('在编辑器右上角的菜单里可以导出这篇文字'));
-          break;
-      }
+    ).then((value) {
+      if (!context.mounted) return;
+      _applyNoteAction(context, state, meta, value);
     });
+  }
+
+  Future<void> _showActionsSheet(
+    BuildContext context,
+    AppState state,
+    NoteMeta meta,
+  ) async {
+    final c = AppPalette.of(context);
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: c.surface,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 0, 22, 8),
+              child: Text(
+                meta.title.trim().isEmpty ? _t('无题') : meta.title.trim(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: 'NotoSansSC',
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: c.ink,
+                ),
+              ),
+            ),
+            if (widget.view == 'trash') ...[
+              _MobileMenuRow(
+                icon: LucideIcons.eye,
+                label: _t('查看全文'),
+                onTap: () => Navigator.of(context).pop('preview'),
+              ),
+              _MobileMenuRow(
+                icon: LucideIcons.recycle,
+                label: _t('恢复'),
+                onTap: () => Navigator.of(context).pop('restore'),
+              ),
+              _MobileMenuRow(
+                icon: LucideIcons.trash2,
+                label: _t('永久删除'),
+                onTap: () => Navigator.of(context).pop('purge'),
+              ),
+            ] else ...[
+              _MobileMenuRow(
+                icon: meta.pinned ? LucideIcons.pinOff : LucideIcons.pin,
+                label: _t(meta.pinned ? '取消置顶' : '置顶'),
+                onTap: () => Navigator.of(context).pop('pin'),
+              ),
+              _MobileMenuRow(
+                icon: meta.favorite ? LucideIcons.starOff : LucideIcons.star,
+                label: _t(meta.favorite ? '取消收藏' : '收藏'),
+                onTap: () => Navigator.of(context).pop('fav'),
+              ),
+              _MobileMenuRow(
+                icon: LucideIcons.copy,
+                label: _t('复制一份'),
+                onTap: () => Navigator.of(context).pop('duplicate'),
+              ),
+              _MobileMenuRow(
+                icon: LucideIcons.download,
+                label: _t('导出…'),
+                onTap: () => Navigator.of(context).pop('export'),
+              ),
+              _MobileMenuRow(
+                icon: LucideIcons.trash2,
+                label: _t('移到回收站'),
+                onTap: () => Navigator.of(context).pop('trash'),
+              ),
+            ],
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (action == null || !context.mounted) return;
+    await _applyNoteAction(context, state, meta, action);
+  }
+
+  Future<void> _applyNoteAction(
+    BuildContext context,
+    AppState state,
+    NoteMeta meta,
+    String? value,
+  ) async {
+    if (value == null || !context.mounted) return;
+    switch (value) {
+      case 'pin':
+        await state.togglePin(meta);
+        break;
+      case 'fav':
+        await state.toggleFavorite(meta);
+        break;
+      case 'trash':
+        widget.onRequestTrash?.call(meta);
+        break;
+      case 'preview':
+        if (context.mounted) _showTrashPreview(context, state, meta);
+        break;
+      case 'restore':
+        await state.restoreNote(meta.id);
+        if (context.mounted) {
+          showToast(
+            context,
+            _t('已恢复到原来的位置'),
+            icon: LucideIcons.recycle,
+          );
+        }
+        break;
+      case 'purge':
+        if (context.mounted &&
+            await showConfirm(
+              context,
+              title: _t('永久删除？'),
+              message: _t('这篇文字将无法恢复。'),
+              danger: true,
+              confirmLabel: _t('删除'),
+            )) {
+          await state.purgeNote(meta.id);
+        }
+        break;
+      case 'duplicate':
+        final copy = await state.duplicateNote(meta.id);
+        if (copy != null && context.mounted) {
+          showToast(context, _t('已复制一份'), icon: LucideIcons.copy);
+        }
+        break;
+      case 'export':
+        showToast(context, _t('在编辑器右上角的菜单里可以导出这篇文字'));
+        break;
+    }
   }
 
   void _showTrashPreview(BuildContext context, AppState state, NoteMeta meta) {
@@ -1310,6 +1612,109 @@ class _NoteCardState extends State<NoteCard> {
   }
 }
 
+class _ScopeChip extends StatelessWidget {
+  const _ScopeChip({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: Motion.fast,
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? c.accentSoft : c.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? c.accent.withValues(alpha: 0.32) : c.line,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: selected ? c.accent : c.inkMuted),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'NotoSansSC',
+                fontSize: 11,
+                color: selected ? c.accent : c.inkSoft,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileMenuRow extends StatelessWidget {
+  const _MobileMenuRow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.hint,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final String? hint;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: c.inkMuted),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontFamily: 'NotoSansSC',
+                  fontSize: 13,
+                  color: c.ink,
+                ),
+              ),
+            ),
+            if (hint != null)
+              Text(
+                hint!,
+                style: TextStyle(
+                  fontFamily: 'NotoSansSC',
+                  fontSize: 10,
+                  color: c.inkMuted,
+                ),
+              ),
+            const SizedBox(width: 6),
+            Icon(LucideIcons.chevronRight, size: 14, color: c.inkMuted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// 英文文案。键是界面里的中文原文，值是对应的英文。
 const Map<String, String> _en = <String, String>{
   // 顶部标题与说明
@@ -1330,7 +1735,13 @@ const Map<String, String> _en = <String, String>{
   // 工具栏
   '新建（Ctrl N）': 'New (Ctrl N)',
   '搜索所有文字…': 'Search all words…',
+  '更多': 'More',
   '全部': 'All',
+  '命令面板': 'Command palette',
+  '写作统计': 'Writing stats',
+  '设置': 'Settings',
+  '新建笔记': 'New note',
+  '长按卡片可拖动排序': 'Long-press a card to reorder',
   // 排序
   '最近': 'Recent',
   '创建': 'Created',
@@ -1364,6 +1775,7 @@ const Map<String, String> _en = <String, String>{
   '收藏': 'Favorite',
   '复制一份': 'Duplicate',
   '导出…': 'Export…',
+  '查看全文': 'Read',
   '移到回收站': 'Move to Trash',
   '恢复': 'Restore',
   '永久删除': 'Delete forever',

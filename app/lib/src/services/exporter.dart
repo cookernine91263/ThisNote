@@ -11,6 +11,7 @@ import '../core/format.dart';
 import '../core/i18n.dart';
 import '../data/models.dart';
 import '../data/repository.dart';
+import '../features/editor/code_block.dart';
 import '../features/editor/huazi.dart';
 
 /// 导出文件里会出现的固定文案（标题占位、作者、日期标签等）。
@@ -99,18 +100,25 @@ class NoteExporter {
       '<w:body>',
     );
     final blocks = parser.blocks;
-    var orderedIndex = 0;
-    for (var i = 0; i < blocks.length; i++) {
-      final block = blocks[i];
+    final orderedNumIds = <int>[];
+    var lastList = '';
+    for (final block in blocks) {
       if (block.isDivider) {
         document.write(
           '<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="D3C7B0"/></w:pBdr>'
           '<w:spacing w:before="180" w:after="180"/></w:pPr></w:p>',
         );
+        lastList = '';
+        continue;
+      }
+      if (block.isCode) {
+        document.write(_docxCodeBlock(block));
+        lastList = '';
         continue;
       }
       if (block.runs.isEmpty) {
         document.write('<w:p><w:pPr><w:spacing w:line="360" w:lineRule="auto" w:after="120"/></w:pPr></w:p>');
+        lastList = '';
         continue;
       }
       if (block.runs.any((r) => r.isImage)) {
@@ -127,22 +135,65 @@ class NoteExporter {
           final img = imageParts[run.imageIndex!];
           document.write(_imageXml(img, run.attrs));
         }
+        lastList = '';
         continue;
       }
       final header = block.attrs['header'];
       final list = block.attrs['list'];
       final quote = block.attrs['blockquote'] == true;
-      final code = block.attrs['code-block'] == true;
       final align = block.attrs['align'];
+      final checked = list == 'checked';
       final pPr = StringBuffer('<w:pPr>');
-      pPr.write('<w:spacing w:line="360" w:lineRule="auto" w:after="120"');
       if (header is int) {
-        final before = switch (header) { 1 => 360, 2 => 300, _ => 240 };
-        pPr.write(' w:before="$before"');
-      }
-      pPr.write('/>');
-      if (header is int) {
+        pPr.write('<w:pStyle w:val="Heading${header.clamp(1, 3)}"/>');
         pPr.write('<w:keepNext/>');
+      } else if (quote) {
+        pPr.write('<w:pStyle w:val="Quote"/>');
+      }
+      String? prefix;
+      String? numPr;
+      var hanging = false;
+      if (list is String) {
+        if (list == 'ordered') {
+          if (lastList != 'ordered') {
+            orderedNumIds.add(2 + orderedNumIds.length);
+          }
+          numPr =
+              '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${orderedNumIds.last}"/></w:numPr>';
+        } else if (list == 'bullet') {
+          numPr =
+              '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>';
+        } else if (list == 'checked') {
+          prefix = '☑ ';
+          hanging = true;
+        } else if (list == 'unchecked') {
+          prefix = '☐ ';
+          hanging = true;
+        } else {
+          prefix = '• ';
+          hanging = true;
+        }
+      }
+      if (numPr != null) pPr.write(numPr);
+      if (quote) {
+        pPr.write(
+          '<w:pBdr><w:left w:val="single" w:sz="12" w:space="8" w:color="A84637"/></w:pBdr>'
+          '<w:shd w:val="clear" w:color="auto" w:fill="F7EEE9"/>',
+        );
+      }
+      final before = header is int ? switch (header) {
+        1 => 360,
+        2 => 300,
+        _ => 240,
+      } : 0;
+      pPr.write(
+        '<w:spacing w:line="360" w:lineRule="auto" w:after="120"'
+        '${before > 0 ? ' w:before="$before"' : ''}/>',
+      );
+      if (quote) {
+        pPr.write('<w:ind w:left="240" w:right="120"/>');
+      } else if (hanging) {
+        pPr.write('<w:ind w:left="420" w:hanging="270"/>');
       }
       if (align is String && align != 'left') {
         final val = switch (align) {
@@ -153,39 +204,12 @@ class NoteExporter {
         };
         pPr.write('<w:jc w:val="$val"/>');
       }
-      if (quote) {
-        pPr.write(
-          '<w:pBdr><w:left w:val="single" w:sz="12" w:space="8" w:color="A84637"/></w:pBdr>'
-          '<w:shd w:val="clear" w:color="auto" w:fill="F7EEE9"/>'
-          '<w:ind w:left="240" w:right="120"/>',
-        );
-      }
-      if (code) {
-        pPr.write(
-          '<w:shd w:val="clear" w:color="auto" w:fill="F1EDE4"/>'
-          '<w:ind w:left="180" w:right="180"/>',
-        );
-      }
-      String? prefix;
-      if (list is String) {
-        if (list == 'ordered') {
-          final prevList = i > 0 ? blocks[i - 1].attrs['list'] : null;
-          orderedIndex = prevList == 'ordered' ? orderedIndex + 1 : 1;
-          prefix = '$orderedIndex. ';
-        } else if (list == 'checked') {
-          prefix = '☑ ';
-        } else if (list == 'unchecked') {
-          prefix = '☐ ';
-        } else {
-          prefix = '• ';
-        }
-        pPr.write('<w:ind w:left="420" w:hanging="270"/>');
-      }
       pPr.write('</w:pPr>');
       document.write('<w:p>$pPr');
       if (prefix != null) {
         document.write(
-          '<w:r><w:rPr><w:rFonts w:ascii="微软雅黑" w:eastAsia="微软雅黑" w:hAnsi="微软雅黑"/></w:rPr>'
+          '<w:r><w:rPr><w:rFonts w:ascii="微软雅黑" w:eastAsia="微软雅黑" w:hAnsi="微软雅黑"/>'
+          '${checked ? '<w:strike/>' : ''}</w:rPr>'
           '<w:t xml:space="preserve">${_esc(prefix)}</w:t></w:r>',
         );
       }
@@ -195,7 +219,15 @@ class NoteExporter {
           document.write(_imageXml(img, run.attrs));
           continue;
         }
-        final rPr = _runProps(run.attrs, header: header, code: code, quote: quote);
+        final runAttrs = checked
+            ? <String, dynamic>{...run.attrs, 'strike': true}
+            : run.attrs;
+        final rPr = _runProps(
+          runAttrs,
+          header: header,
+          code: false,
+          quote: quote,
+        );
         final text = '<w:t xml:space="preserve">${_esc(run.text)}</w:t>';
         final runXml = '<w:r>$rPr$text</w:r>';
         if (run.linkId != null) {
@@ -205,6 +237,7 @@ class NoteExporter {
         }
       }
       document.write('</w:p>');
+      lastList = list is String ? list : '';
     }
     document.write(
       '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>'
@@ -223,6 +256,7 @@ class NoteExporter {
     addText('_rels/.rels', _rootRels());
     addText('word/document.xml', document.toString());
     addText('word/styles.xml', _styles());
+    addText('word/numbering.xml', _numbering(orderedNumIds));
     addText('word/_rels/document.xml.rels', _docRels(imageParts, links));
     addText('docProps/core.xml', _core(note));
     addText('docProps/app.xml', _app());
@@ -240,6 +274,7 @@ class NoteExporter {
   static pw.Font? _pdfLight;
   static pw.Font? _pdfOblique;
   static pw.Font? _pdfWenKai;
+  static pw.Font? _pdfMono;
 
   Future<void> _loadPdfFonts() async {
     if (_pdfRegular != null) return;
@@ -257,9 +292,16 @@ class NoteExporter {
     _pdfWenKai = pw.Font.ttf(
       await rootBundle.load('assets/fonts/LXGWWenKai-Regular.ttf'),
     );
+    try {
+      _pdfMono = pw.Font.ttf(
+        await rootBundle.load('assets/fonts/SourceHanMonoSC-Regular.otf'),
+      );
+    } catch (_) {
+      _pdfMono = _pdfRegular;
+    }
   }
 
-  Future<Uint8List> pdf(Note note) async {
+  Future<Uint8List> pdf(Note note, {Color? accent}) async {
     await _loadPdfFonts();
     final parser = _DeltaParser(note);
     await parser.parse(store);
@@ -268,6 +310,8 @@ class NoteExporter {
     final light = _pdfLight!;
     final oblique = _pdfOblique!;
     final wenkai = _pdfWenKai!;
+    final mono = _pdfMono ?? regular;
+    final accentColor = PdfColor.fromInt(accent?.toARGB32() ?? 0xFFA84637);
     final title = _titleOf(note);
 
     final doc = pw.Document(
@@ -307,6 +351,29 @@ class NoteExporter {
         widgets.add(pw.Divider(color: PdfColor.fromHex('#E3DAC8')));
         continue;
       }
+      if (block.isCode) {
+        widgets.add(
+          pw.Container(
+            margin: const pw.EdgeInsets.symmetric(vertical: 6),
+            padding: const pw.EdgeInsets.all(10),
+            decoration: pw.BoxDecoration(
+              color: PdfColor.fromHex('#F1EDE4'),
+              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+            ),
+            child: pw.Text(
+              block.code ?? block.runs.map((r) => r.text).join(),
+              style: pw.TextStyle(
+                font: mono,
+                fontFallback: [regular],
+                fontSize: 9.2,
+                lineSpacing: 2,
+                color: PdfColor.fromHex('#211E19'),
+              ),
+            ),
+          ),
+        );
+        continue;
+      }
       if (block.runs.any((r) => r.isImage)) {
         for (final run in block.runs.where((r) => r.isImage)) {
           final img = parser.images[run.imageIndex!];
@@ -339,7 +406,7 @@ class NoteExporter {
       final header = block.attrs['header'];
       final list = block.attrs['list'];
       final quote = block.attrs['blockquote'] == true;
-      final code = block.attrs['code-block'] == true;
+      final checked = list == 'checked';
       final align = switch (block.attrs['align']) {
         'center' => pw.TextAlign.center,
         'right' => pw.TextAlign.right,
@@ -351,9 +418,9 @@ class NoteExporter {
         ordered++;
         prefix = '$ordered. ';
       } else if (list == 'checked') {
-        prefix = '☑ ';
+        prefix = '[x] ';
       } else if (list == 'unchecked') {
-        prefix = '☐ ';
+        prefix = '[ ] ';
       } else if (list == 'bullet') {
         prefix = '• ';
       } else {
@@ -367,21 +434,26 @@ class NoteExporter {
               font: regular,
               fontSize: 10,
               color: PdfColor.fromHex('#8D8576'),
+              decoration:
+                  checked ? pw.TextDecoration.lineThrough : pw.TextDecoration.none,
             ),
           ),
         for (final run in block.runs)
           pw.TextSpan(
             text: run.text,
             style: _pdfRunStyle(
-              run.attrs,
+              checked
+                  ? <String, dynamic>{...run.attrs, 'strike': true}
+                  : run.attrs,
               regular: regular,
               bold: bold,
               light: light,
               oblique: oblique,
               wenkai: wenkai,
               header: header,
-              code: code,
+              code: false,
               quote: quote,
+              mono: mono,
             ),
           ),
       ];
@@ -390,28 +462,16 @@ class NoteExporter {
         textAlign: align,
         lineSplitter: (line) => line.split(''),
       );
-      if (code) {
-        widgets.add(
-          pw.Container(
-            margin: const pw.EdgeInsets.symmetric(vertical: 6),
-            padding: const pw.EdgeInsets.all(10),
-            decoration: pw.BoxDecoration(
-              color: PdfColor.fromHex('#F1EDE4'),
-              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
-            ),
-            child: rich,
-          ),
-        );
-      } else if (quote) {
+      if (quote) {
         widgets.add(
           pw.Container(
             margin: const pw.EdgeInsets.symmetric(vertical: 6),
             padding: const pw.EdgeInsets.fromLTRB(12, 8, 12, 8),
-            decoration: const pw.BoxDecoration(
-              color: PdfColor.fromInt(0xFFF7EEE9),
+            decoration: pw.BoxDecoration(
+              color: const PdfColor.fromInt(0xFFF7EEE9),
               border: pw.Border(
                 left: pw.BorderSide(
-                  color: PdfColor.fromInt(0xFFA84637),
+                  color: accentColor,
                   width: 2,
                 ),
               ),
@@ -423,6 +483,7 @@ class NoteExporter {
         widgets.add(
           pw.Padding(
             padding: pw.EdgeInsets.only(
+              left: list is String ? 14 : 0,
               top: header != null ? 10 : 2,
               bottom: header != null ? 3 : 5,
             ),
@@ -479,6 +540,7 @@ class NoteExporter {
     required pw.Font light,
     required pw.Font oblique,
     required pw.Font wenkai,
+    pw.Font? mono,
     Object? header,
     required bool code,
     required bool quote,
@@ -508,7 +570,7 @@ class NoteExporter {
     if (attrs['strike'] == true) decoration = pw.TextDecoration.lineThrough;
     if (attrs['code'] == true) {
       size = 9.5;
-      font = regular;
+      font = mono ?? regular;
       background = PdfColor.fromHex('#F1EDE4');
     }
     if (quote) color = PdfColor.fromHex('#575149');
@@ -574,6 +636,14 @@ class NoteExporter {
         out.writeln();
         continue;
       }
+      if (block.isCode) {
+        final code = block.code ?? block.runs.map((r) => r.text).join();
+        out.writeln('```${block.codeLanguage}');
+        out.writeln(code);
+        out.writeln('```');
+        out.writeln();
+        continue;
+      }
       final text = block.runs.map((r) {
         if (r.isImage) return '![${tr('图片', null, _en)}](${r.imagePath})';
         var t = r.text;
@@ -589,12 +659,7 @@ class NoteExporter {
       final header = block.attrs['header'];
       final list = block.attrs['list'];
       final quote = block.attrs['blockquote'] == true;
-      final code = block.attrs['code-block'] == true;
-      if (code) {
-        out.writeln('```');
-        out.writeln(text);
-        out.writeln('```');
-      } else if (header is int) {
+      if (header is int) {
         out.writeln('${'#' * (header + 1)} $text');
       } else if (quote) {
         out.writeln('> $text');
@@ -651,10 +716,28 @@ class NoteExporter {
     c.writeln(
       '<div class="meta">${_metaLine(note)}</div>',
     );
-    var ordered = 0;
+    String? openList;
+    void closeList() {
+      if (openList != null) {
+        c.writeln('</$openList>');
+        openList = null;
+      }
+    }
+
     for (final block in parser.blocks) {
       if (block.isDivider) {
+        closeList();
         c.writeln('<hr>');
+        continue;
+      }
+      if (block.isCode) {
+        closeList();
+        final code = block.code ?? block.runs.map((r) => r.text).join();
+        final language = block.codeLanguage;
+        final cls = language.isEmpty
+            ? ''
+            : ' class="language-${_esc(language)}"';
+        c.writeln('<pre><code$cls>${_esc(code)}</code></pre>');
         continue;
       }
       final text = StringBuffer();
@@ -711,26 +794,36 @@ class NoteExporter {
       final header = block.attrs['header'];
       final list = block.attrs['list'];
       final quote = block.attrs['blockquote'] == true;
-      final code = block.attrs['code-block'] == true;
-      if (code) {
-        c.writeln('<pre>${text.toString().replaceAll('<br>', '\n')}</pre>');
-      } else if (header is int) {
+      final checked = list == 'checked';
+      if (header is int) {
+        closeList();
         final tag = 'h${header.clamp(1, 3)}';
         c.writeln('<$tag>$text</$tag>');
       } else if (quote) {
+        closeList();
         c.writeln('<blockquote>$text</blockquote>');
-      } else if (list == 'ordered') {
-        ordered++;
-        c.writeln('<ol start="$ordered"><li>$text</li></ol>');
       } else if (list is String) {
-        ordered = 0;
-        final prefix = list == 'checked' ? '☑ ' : list == 'unchecked' ? '☐ ' : '• ';
-        c.writeln('<div style="padding-left:1.2em">$prefix$text</div>');
+        final target = list == 'ordered' ? 'ol' : 'ul';
+        if (openList != target) {
+          closeList();
+          openList = target;
+          c.writeln('<$target>');
+        }
+        if (list == 'ordered') {
+          c.writeln('<li>$text</li>');
+        } else if (checked) {
+          c.writeln('<li><del>☑ $text</del></li>');
+        } else if (list == 'unchecked') {
+          c.writeln('<li>☐ $text</li>');
+        } else {
+          c.writeln('<li>$text</li>');
+        }
       } else {
-        ordered = 0;
+        closeList();
         c.writeln('<p>$text</p>');
       }
     }
+    closeList();
     c.writeln('<footer>${_exportedOn(DateTime.now())}</footer>');
     c.writeln('</main></body></html>');
     return c.toString();
@@ -805,6 +898,59 @@ class NoteExporter {
     return b.toString();
   }
 
+  String _docxCodeBlock(_Block block) {
+    final code = block.code ?? block.runs.map((r) => r.text).join();
+    final lines = code.split('\n');
+    final b = StringBuffer(
+      '<w:p><w:pPr><w:pStyle w:val="ThisNoteCode"/>'
+      '<w:shd w:val="clear" w:color="auto" w:fill="F1EDE4"/>'
+      '<w:spacing w:before="120" w:after="120" w:line="300" w:lineRule="auto"/>'
+      '<w:ind w:left="180" w:right="180"/></w:pPr>',
+    );
+    final rPr = _runProps(const {}, code: true, quote: false);
+    for (var i = 0; i < lines.length; i++) {
+      if (i > 0) b.write('<w:r><w:br/></w:r>');
+      b.write(
+        '<w:r>$rPr<w:t xml:space="preserve">${_esc(lines[i])}</w:t></w:r>',
+      );
+    }
+    b.write('</w:p>');
+    return b.toString();
+  }
+
+  String _numbering(List<int> orderedNumIds) {
+    final b = StringBuffer(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">',
+    );
+    b.write(
+      '<w:abstractNum w:abstractNumId="0">'
+      '<w:multiLevelType w:val="singleLevel"/>'
+      '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/>'
+      '<w:lvlText w:val="•"/><w:lvlJc w:val="left"/>'
+      '<w:pPr><w:ind w:left="420" w:hanging="270"/></w:pPr></w:lvl>'
+      '</w:abstractNum>',
+    );
+    b.write(
+      '<w:abstractNum w:abstractNumId="1">'
+      '<w:multiLevelType w:val="singleLevel"/>'
+      '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/>'
+      '<w:lvlText w:val="%1."/><w:lvlJc w:val="left"/>'
+      '<w:pPr><w:ind w:left="420" w:hanging="270"/></w:pPr></w:lvl>'
+      '</w:abstractNum>',
+    );
+    b.write('<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>');
+    for (final id in orderedNumIds) {
+      b.write(
+        '<w:num w:numId="$id"><w:abstractNumId w:val="1"/>'
+        '<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride>'
+        '</w:num>',
+      );
+    }
+    b.write('</w:numbering>');
+    return b.toString();
+  }
+
   String _imageXml(_ImagePart img, Map<String, dynamic> attrs) {
     final factor = _imageFactor(attrs);
     final maxEmu = (5486400 * factor).round();
@@ -874,6 +1020,7 @@ class NoteExporter {
         '${defaults.join()}'
         '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
         '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
+        '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>'
         '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
         '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
         '</Types>';
@@ -889,6 +1036,7 @@ class NoteExporter {
   String _docRels(List<_ImagePart> images, List<_LinkPart> links) {
     final b = StringBuffer('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">');
+    b.write('<Relationship Id="rIdNum1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>');
     for (final img in images) {
       b.write('<Relationship Id="${img.relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${img.fileName}"/>');
     }
@@ -907,6 +1055,29 @@ class NoteExporter {
       '<w:pPrDefault><w:pPr><w:spacing w:line="360" w:lineRule="auto" w:after="120"/></w:pPr></w:pPrDefault>'
       '</w:docDefaults>'
       '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>'
+      '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/>'
+      '<w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>'
+      '<w:pPr><w:keepNext/><w:outlineLvl w:val="0"/><w:spacing w:before="360" w:after="120"/></w:pPr>'
+      '<w:rPr><w:rFonts w:ascii="LXGW WenKai" w:eastAsia="LXGW WenKai" w:hAnsi="LXGW WenKai"/>'
+      '<w:b/><w:sz w:val="44"/></w:rPr></w:style>'
+      '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/>'
+      '<w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>'
+      '<w:pPr><w:keepNext/><w:outlineLvl w:val="1"/><w:spacing w:before="300" w:after="120"/></w:pPr>'
+      '<w:rPr><w:rFonts w:ascii="LXGW WenKai" w:eastAsia="LXGW WenKai" w:hAnsi="LXGW WenKai"/>'
+      '<w:b/><w:sz w:val="36"/></w:rPr></w:style>'
+      '<w:style w:type="paragraph" w:styleId="Heading3"><w:name w:val="heading 3"/>'
+      '<w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>'
+      '<w:pPr><w:keepNext/><w:outlineLvl w:val="2"/><w:spacing w:before="240" w:after="120"/></w:pPr>'
+      '<w:rPr><w:b/><w:sz w:val="30"/></w:rPr></w:style>'
+      '<w:style w:type="paragraph" w:styleId="Quote"><w:name w:val="Quote"/>'
+      '<w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="120" w:after="120"/></w:pPr>'
+      '<w:rPr><w:color w:val="575149"/></w:rPr></w:style>'
+      '<w:style w:type="paragraph" w:styleId="ThisNoteCode"><w:name w:val="ThisNote Code"/>'
+      '<w:basedOn w:val="Normal"/><w:pPr><w:shd w:val="clear" w:color="auto" w:fill="F1EDE4"/>'
+      '<w:spacing w:before="120" w:after="120" w:line="300" w:lineRule="auto"/>'
+      '<w:ind w:left="180" w:right="180"/></w:pPr>'
+      '<w:rPr><w:rFonts w:ascii="Consolas" w:eastAsia="Noto Sans SC" w:hAnsi="Consolas"/>'
+      '<w:sz w:val="19"/><w:szCs w:val="19"/></w:rPr></w:style>'
       '</w:styles>';
 
   String _core(Note note) => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -960,11 +1131,19 @@ class _Block {
     required this.runs,
     required this.attrs,
     this.isDivider = false,
+    this.code,
+    this.codeLanguage = '',
   });
 
   final List<_Run> runs;
   final Map<String, dynamic> attrs;
   final bool isDivider;
+
+  /// 非空表示这是一个代码块（自定义 embed 或合并后的旧版行属性代码块）。
+  final String? code;
+  final String codeLanguage;
+
+  bool get isCode => code != null || attrs['code-block'] == true;
 }
 
 class _ImagePart {
@@ -1023,6 +1202,22 @@ class _DeltaParser {
           }
         }
       } else if (insert is Map) {
+        final code = CodeBlockData.fromRaw(insert[codeBlockKey]);
+        if (code != null) {
+          if (runs.isNotEmpty) {
+            blocks.add(_Block(runs: runs, attrs: const {}));
+            runs = <_Run>[];
+          }
+          blocks.add(
+            _Block(
+              runs: const [],
+              attrs: const {},
+              code: code.code,
+              codeLanguage: code.language,
+            ),
+          );
+          continue;
+        }
         if (insert['image'] is String) {
           final path = insert['image'] as String;
           final bytes = await store.readAsset(path);
@@ -1060,7 +1255,47 @@ class _DeltaParser {
       }
     }
     if (runs.isNotEmpty) blocks.add(_Block(runs: runs, attrs: const {}));
+    _normalizeCodeBlocks();
     if (blocks.isEmpty) blocks.add(_Block(runs: const [], attrs: const {}));
+  }
+
+  void _normalizeCodeBlocks() {
+    final merged = <_Block>[];
+    for (final block in blocks) {
+      if (!block.isCode) {
+        merged.add(block);
+        continue;
+      }
+      final text = block.code ?? block.runs.map((r) => r.text).join();
+      final language = block.codeLanguage;
+      if (merged.isNotEmpty && merged.last.isCode) {
+        final previous = merged.removeLast();
+        final previousText =
+            previous.code ?? previous.runs.map((r) => r.text).join();
+        merged.add(
+          _Block(
+            runs: const [],
+            attrs: const {},
+            code: '$previousText\n$text',
+            codeLanguage: previous.codeLanguage.isNotEmpty
+                ? previous.codeLanguage
+                : language,
+          ),
+        );
+      } else {
+        merged.add(
+          _Block(
+            runs: const [],
+            attrs: const {},
+            code: text,
+            codeLanguage: language,
+          ),
+        );
+      }
+    }
+    blocks
+      ..clear()
+      ..addAll(merged);
   }
 
   void parseSync() {
@@ -1070,15 +1305,33 @@ class _DeltaParser {
       final insert = raw['insert'];
       final attrs = (raw['attributes'] as Map?)?.cast<String, dynamic>() ?? const {};
       if (insert is! String) {
-        if (insert is Map && insert['image'] is String) {
-          runs.add(_Run(
-            '',
-            attrs: attrs,
-            isImage: true,
-            imagePath: insert['image'] as String,
-          ));
-        } else if (insert is Map && insert['divider'] != null) {
-          blocks.add(_Block(runs: const [], attrs: const {}, isDivider: true));
+        if (insert is Map) {
+          final code = CodeBlockData.fromRaw(insert[codeBlockKey]);
+          if (code != null) {
+            if (runs.isNotEmpty) {
+              blocks.add(_Block(runs: runs, attrs: const {}));
+              runs = <_Run>[];
+            }
+            blocks.add(
+              _Block(
+                runs: const [],
+                attrs: const {},
+                code: code.code,
+                codeLanguage: code.language,
+              ),
+            );
+            continue;
+          }
+          if (insert['image'] is String) {
+            runs.add(_Run(
+              '',
+              attrs: attrs,
+              isImage: true,
+              imagePath: insert['image'] as String,
+            ));
+          } else if (insert['divider'] != null) {
+            blocks.add(_Block(runs: const [], attrs: const {}, isDivider: true));
+          }
         }
         continue;
       }
@@ -1092,6 +1345,7 @@ class _DeltaParser {
       }
     }
     if (runs.isNotEmpty) blocks.add(_Block(runs: runs, attrs: const {}));
+    _normalizeCodeBlocks();
   }
 
   Future<String?> _linkId(Map<String, dynamic> attrs) async {

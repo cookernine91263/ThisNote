@@ -18,6 +18,7 @@ import 'calendar_page.dart';
 import 'command_palette.dart';
 import 'editor/editor_page.dart';
 import 'empty_desk.dart';
+import 'mobile_nav.dart';
 import 'note_list.dart';
 import 'settings_page.dart';
 import 'splash.dart';
@@ -323,81 +324,38 @@ class _MobileShell extends StatelessWidget {
           SettingsPage(),
         ],
       ),
-      bottomNavigationBar: _MobileNav(
-        current: tab,
-        onTap: (i) {
-          state.setView(switch (i) {
-            1 => 'calendar',
-            2 => 'stats',
-            3 => 'settings',
-            _ => 'today',
-          });
-        },
-      ),
-    );
-  }
-}
-
-class _MobileNav extends StatelessWidget {
-  const _MobileNav({required this.current, required this.onTap});
-  final int current;
-  final ValueChanged<int> onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppPalette.of(context);
-    final items = [
-      (LucideIcons.sun, _t('今日')),
-      (LucideIcons.calendarDays, _t('日历')),
-      (LucideIcons.chartNoAxesColumn, _t('统计')),
-      (LucideIcons.settings, _t('我的')),
-    ];
-    return Container(
-      decoration: BoxDecoration(
-        color: c.surface,
-        border: Border(top: BorderSide(color: c.line)),
-      ),
-      padding: EdgeInsets.only(
-        top: 7,
-        bottom: MediaQuery.paddingOf(context).bottom + 9,
-      ),
-      child: Row(
-        children: [
-          for (var i = 0; i < items.length; i++)
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onTap(i),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AnimatedContainer(
-                      duration: Motion.fast,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: current == i ? c.accentSoft : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        items[i].$1,
-                        size: 18,
-                        color: current == i ? c.accent : c.inkMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      items[i].$2,
-                      style: TextStyle(
-                        fontFamily: 'NotoSansSC',
-                        fontSize: 9.5,
-                        color: current == i ? c.accent : c.inkMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+      bottomNavigationBar: LiquidNavBar(
+        index: tab,
+        items: [
+          LiquidNavItem(icon: LucideIcons.notebook, label: _t('笔记')),
+          LiquidNavItem(icon: LucideIcons.calendarDays, label: _t('日历')),
+          LiquidNavItem(icon: LucideIcons.chartNoAxesColumn, label: _t('统计')),
+          LiquidNavItem(icon: LucideIcons.settings, label: _t('我的')),
         ],
+        onTap: (i) {
+          switch (i) {
+            case 1:
+              state.setView('calendar');
+              break;
+            case 2:
+              state.setView('stats');
+              break;
+            case 3:
+              state.setView('settings');
+              break;
+            default:
+              const listViews = {
+                'today',
+                'all',
+                'tags',
+                'trash',
+                'search',
+              };
+              state.setView(
+                listViews.contains(state.view) ? 'today' : state.listView,
+              );
+          }
+        },
       ),
     );
   }
@@ -613,18 +571,26 @@ class _RailItem extends StatelessWidget {
                                   : c.inkMuted,
                         ),
                         const SizedBox(height: 3),
-                        Text(
-                          label,
-                          style: TextStyle(
-                            fontFamily: 'NotoSansSC',
-                            fontSize: 9,
-                            height: 1.1,
-                            letterSpacing: 0.2,
-                            color: active
-                                ? c.accent
-                                : hovered
-                                    ? c.inkSoft
-                                    : c.inkMuted,
+                        SizedBox(
+                          width: 48,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              softWrap: false,
+                              style: TextStyle(
+                                fontFamily: 'NotoSansSC',
+                                fontSize: 9,
+                                height: 1.1,
+                                letterSpacing: 0.2,
+                                color: active
+                                    ? c.accent
+                                    : hovered
+                                        ? c.inkSoft
+                                        : c.inkMuted,
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -846,12 +812,13 @@ const Map<String, String> _en = <String, String>{
   '日历': 'Calendar',
   '标签': 'Tags',
   '统计': 'Stats',
-  '命令': 'Commands',
+  '命令': 'Cmd K',
   '专注': 'Focus',
-  '外观': 'Appearance',
+  '外观': 'Theme',
   '回收': 'Trash',
   '设置': 'Settings',
   // 移动端底部导航
+  '笔记': 'Notes',
   '我的': 'Me',
   // 悬停提示
   '此记 · ThisNote': 'ThisNote',
