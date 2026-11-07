@@ -525,7 +525,12 @@ class NoteStore {
         await file.delete();
       } catch (_) {}
     }
-    await tmp.rename(file.path);
+    try {
+      await tmp.rename(file.path);
+    } on PathNotFoundException {
+      // 数据目录可能在写入途中被删除（测试清理、用户手动删库）。
+      // 这是一个已排队的异步写，不再把错误抛给上层。
+    }
   }
 }
 

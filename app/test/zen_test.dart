@@ -72,7 +72,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byTooltip('退出专注模式'), findsNothing);
-    expect(find.byType(WindowTitleBar), findsOneWidget);
+    // 标题栏只在 Windows 上渲染；Linux CI 里专注退出仍然有效。
+    if (Platform.isWindows) {
+      expect(find.byType(WindowTitleBar), findsOneWidget);
+    }
 
     await tester.tap(find.byKey(const Key('rail-settings')));
     await tester.pump();
