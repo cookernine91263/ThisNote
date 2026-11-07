@@ -16,13 +16,18 @@ const Map<String, String> _en = <String, String>{
   '转一圈，挑一个今天心情的颜色': 'Spin the wheel, pick a color for today',
   '高亮底色': 'Highlight background',
   '保存到常用': 'Save to favorites',
+  '存常用': 'Save',
+  '取消常用': 'Unsave',
+  '从常用移除': 'Remove from favorites',
   '已保存 {hex}': 'Saved {hex}',
+  '已从常用移除': 'Removed from favorites',
   '明度': 'Brightness',
   '常用': 'Saved',
   '内置': 'Built-in',
   '清除颜色': 'Clear color',
   '用这个颜色': 'Use this color',
-  '{hex} · 长按删除': '{hex} · long-press to delete',
+  '{hex} · 右键或长按删除': '{hex} · right-click or long-press to delete',
+  '移除常用': 'Remove from favorites',
 };
 
 String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
@@ -199,32 +204,74 @@ class _ColorDialogState extends State<_ColorDialog> {
                       ),
                     ),
                     Tooltip(
-                      message: _t('保存到常用'),
+                      message: saved.any((e) => e.toUpperCase() == _hex)
+                          ? _t('从常用移除')
+                          : _t('保存到常用'),
                       child: GestureDetector(
                         onTap: () async {
-                          await state.saveColor(_hex);
-                          if (context.mounted) {
-                            showToast(
-                              context,
-                              _t('已保存 {hex}', {'hex': _hex}),
-                            );
+                          // 星标是开关：已收藏就移除，否则保存。
+                          if (saved.any((e) => e.toUpperCase() == _hex)) {
+                            await state.removeSavedColor(_hex);
+                            if (context.mounted) {
+                              showToast(context, _t('已从常用移除'));
+                            }
+                          } else {
+                            await state.saveColor(_hex);
+                            if (context.mounted) {
+                              showToast(
+                                context,
+                                _t('已保存 {hex}', {'hex': _hex}),
+                              );
+                            }
                           }
                         },
-                        child: Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: c.accentSoft,
-                            borderRadius: BorderRadius.circular(9),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 140),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 7,
                           ),
-                          child: Icon(
-                            saved.any(
-                                  (e) => e.toUpperCase() == _hex,
-                                )
-                                ? LucideIcons.star
-                                : LucideIcons.starPlus,
-                            size: 15,
-                            color: c.accent,
+                          decoration: BoxDecoration(
+                            color: saved.any(
+                              (e) => e.toUpperCase() == _hex,
+                            )
+                                ? c.accentSoft
+                                : c.paper,
+                            borderRadius: BorderRadius.circular(9),
+                            border: Border.all(
+                              color: saved.any(
+                                (e) => e.toUpperCase() == _hex,
+                              )
+                                  ? c.accent.withValues(alpha: 0.45)
+                                  : c.line,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                saved.any(
+                                      (e) => e.toUpperCase() == _hex,
+                                    )
+                                    ? LucideIcons.starOff
+                                    : LucideIcons.starPlus,
+                                size: 14,
+                                color: c.accent,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                saved.any(
+                                      (e) => e.toUpperCase() == _hex,
+                                    )
+                                    ? _t('取消常用')
+                                    : _t('存常用'),
+                                style: TextStyle(
+                                  fontFamily: 'NotoSansSC',
+                                  fontSize: 9.5,
+                                  color: c.accent,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -391,44 +438,52 @@ class _Swatch extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     final color = _colorFromHex(hex);
+    final swatch = AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: selected ? c.ink : c.lineStrong.withValues(alpha: 0.55),
+          width: selected ? 2 : 1,
+        ),
+        boxShadow: selected
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.35),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ]
+            : null,
+      ),
+      child: selected
+          ? Icon(
+              LucideIcons.check,
+              size: 12,
+              color: color.computeLuminance() > 0.55
+                  ? const Color(0xFF211E19)
+                  : Colors.white,
+            )
+          : null,
+    );
+
+    if (onLongPress == null) {
+      return Tooltip(
+        message: hex,
+        child: GestureDetector(onTap: onTap, child: swatch),
+      );
+    }
+    // 删除只走长按 / 右键，避免小叉或单击误删常用色。
     return Tooltip(
-      message: onLongPress == null
-          ? hex
-          : _t('{hex} · 长按删除', {'hex': hex}),
+      message: _t('{hex} · 右键或长按删除', {'hex': hex}),
       child: GestureDetector(
         onTap: onTap,
         onLongPress: onLongPress,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: selected ? c.ink : c.lineStrong.withValues(alpha: 0.55),
-              width: selected ? 2 : 1,
-            ),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.35),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ]
-                : null,
-          ),
-          child: selected
-              ? Icon(
-                  LucideIcons.check,
-                  size: 12,
-                  color: color.computeLuminance() > 0.55
-                      ? const Color(0xFF211E19)
-                      : Colors.white,
-                )
-              : null,
-        ),
+        onSecondaryTap: onLongPress,
+        child: swatch,
       ),
     );
   }

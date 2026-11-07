@@ -127,6 +127,17 @@ String readingTime(int words) {
   return tr('约 {n} 分钟', {'n': minutes}, _en);
 }
 
+/// 搜索结果卡片显示命中位置附近的一小段，而不是永远从开头截取。
+String? searchSnippet(String text, String query) {
+  if (text.isEmpty || query.isEmpty) return null;
+  final at = text.toLowerCase().indexOf(query.toLowerCase());
+  if (at < 0) return null;
+  final start = (at - 18).clamp(0, text.length);
+  final end = (at + query.length + 46).clamp(0, text.length);
+  final body = text.substring(start, end).replaceAll('\n', ' ').trim();
+  return '${start > 0 ? '…' : ''}$body${end < text.length ? '…' : ''}';
+}
+
 /// 实际写作时长。没有记录过动笔时间的旧笔记退回阅读时长。
 String writingTimeLabel(int seconds, int words) {
   if (seconds <= 0) {

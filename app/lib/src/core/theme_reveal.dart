@@ -51,7 +51,8 @@ class ThemeReveal {
       }
       final size = object.size;
       final origin = object.globalToLocal(globalOrigin);
-      final ratio = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+      final ratio =
+          (MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0).clamp(1.0, 2.0);
       ui.Image? image;
       try {
         image = await object.toImage(pixelRatio: ratio);

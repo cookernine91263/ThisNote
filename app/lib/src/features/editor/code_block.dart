@@ -28,6 +28,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
+import 'table_embed.dart';
 
 const Map<String, String> _en = <String, String>{
   '代码块': 'Code block',
@@ -100,7 +101,14 @@ String deltaPlainText(Delta delta) {
           ..write(code.code)
           ..write('\n');
       } else {
-        out.write(Embed.kObjectReplacementCharacter);
+        final table = tableOf(data);
+        if (table != null) {
+          out
+            ..write(table.plainText)
+            ..write('\n');
+        } else {
+          out.write(Embed.kObjectReplacementCharacter);
+        }
       }
       continue;
     }
@@ -111,7 +119,14 @@ String deltaPlainText(Delta delta) {
           ..write(code.code)
           ..write('\n');
       } else {
-        out.write(Embed.kObjectReplacementCharacter);
+        final table = TableData.fromRaw(data[tableKey]);
+        if (table != null) {
+          out
+            ..write(table.plainText)
+            ..write('\n');
+        } else {
+          out.write(Embed.kObjectReplacementCharacter);
+        }
       }
     }
   }
@@ -423,8 +438,21 @@ Map<String, TextStyle> _highlightTheme(AppPalette c) => {
       'selector-id': TextStyle(color: c.blue),
     };
 
-List<TextSpan> _highlightSpans(String code, String language, AppPalette c) {
-  final base = _baseCodeStyle(c);
+List<TextSpan> _highlightSpans(String code, String language, AppPalette c) =>
+    codeHighlightSpans(
+      code,
+      language,
+      base: _baseCodeStyle(c),
+      theme: _highlightTheme(c),
+    );
+
+/// 语法高亮成 TextSpan。PNG 导出也用它，主题色由调用方给。
+List<TextSpan> codeHighlightSpans(
+  String code,
+  String language, {
+  required TextStyle base,
+  required Map<String, TextStyle> theme,
+}) {
   if (language.isEmpty || code.length > 20000) {
     return [TextSpan(text: code, style: base)];
   }
@@ -432,12 +460,11 @@ List<TextSpan> _highlightSpans(String code, String language, AppPalette c) {
   final key = language == 'html' ? 'xml' : language;
   try {
     final result = hl.highlight.parse(code, language: key);
-    final styles = _highlightTheme(c);
     final spans = <TextSpan>[];
     void walk(hl.Node node, TextStyle inherited) {
       final style = node.className == null
           ? inherited
-          : (styles[node.className] ?? inherited);
+          : (theme[node.className] ?? inherited);
       final value = node.value;
       if (value != null && value.isNotEmpty) {
         spans.add(TextSpan(text: value, style: style));

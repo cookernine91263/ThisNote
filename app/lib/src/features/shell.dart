@@ -18,6 +18,7 @@ import 'calendar_page.dart';
 import 'command_palette.dart';
 import 'editor/editor_page.dart';
 import 'empty_desk.dart';
+import 'global_replace_dialog.dart';
 import 'mobile_nav.dart';
 import 'note_list.dart';
 import 'settings_page.dart';
@@ -35,6 +36,7 @@ class _AppShellState extends State<AppShell>
     with WindowListener, WidgetsBindingObserver {
   bool _zen = false;
   bool _zenResetScheduled = false;
+  bool _listCollapsed = false;
 
   @override
   void initState() {
@@ -94,6 +96,17 @@ class _AppShellState extends State<AppShell>
       return true;
     }
     final keyboard = HardwareKeyboard.instance;
+    if (keyboard.isAltPressed) {
+      final state = context.read<AppState>();
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+        state.openRelativeNote(1);
+        return true;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        state.openRelativeNote(-1);
+        return true;
+      }
+    }
     if (!keyboard.isControlPressed && !keyboard.isMetaPressed) return false;
     // 有弹窗/面板在场时不抢键：否则在标签、链接或 AI 面板里按 Ctrl+N，
     // 会在背后新建笔记并释放当前编辑会话。
@@ -110,6 +123,17 @@ class _AppShellState extends State<AppShell>
     if (event.logicalKey == LogicalKeyboardKey.keyS) {
       state.saveNow();
       return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.tab) {
+      state.switchToNextTab(backwards: keyboard.isShiftPressed);
+      return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyW) {
+      final id = state.current?.id;
+      if (id != null) {
+        state.closeTab(id);
+        return true;
+      }
     }
     final session = state.session;
     if (event.logicalKey == LogicalKeyboardKey.keyV &&
@@ -128,6 +152,11 @@ class _AppShellState extends State<AppShell>
         !keyboard.isShiftPressed) {
       if (session == null) return false;
       session.openFind();
+      return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyH &&
+        keyboard.isShiftPressed) {
+      showGlobalReplaceDialog(context);
       return true;
     }
     if (event.logicalKey == LogicalKeyboardKey.keyH) {
@@ -184,12 +213,15 @@ class _AppShellState extends State<AppShell>
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.read<AppState>();
+    final view = context.select<AppState, String>((value) => value.view);
+    final currentId =
+        context.select<AppState, String?>((value) => value.current?.id);
+    final hasSecondary = context
+        .select<AppState, bool>((value) => value.secondarySession != null);
     final width = MediaQuery.sizeOf(context).width;
     final mobile = width < 900;
-    final zen = _zen &&
-        state.current != null &&
-        _isWritingView(state.view);
+    final zen = _zen && currentId != null && _isWritingView(view);
     // 已经离开编辑器（比如从专注模式里按 Ctrl+,）时，把残留的专注状态收回去。
     if (_zen && !zen && !_zenResetScheduled) {
       _zenResetScheduled = true;
@@ -202,8 +234,9 @@ class _AppShellState extends State<AppShell>
     if (mobile) return _MobileShell(state: state);
 
     final showList =
-        const ['today', 'all', 'tags', 'trash', 'search'].contains(state.view);
-    final main = _buildMain(state, zen);
+        const ['today', 'all', 'time', 'favorites', 'tags', 'trash', 'search']
+            .contains(view);
+    final main = _buildMain(state, zen, hasSecondary: hasSecondary);
 
     return Focus(
       autofocus: true,
@@ -226,9 +259,20 @@ class _AppShellState extends State<AppShell>
                     ),
                   ),
                   _AnimatedWidth(
-                    visible: !zen && showList,
+                    visible: !zen && showList && !_listCollapsed,
                     width: 324,
-                    child: const NoteListPanel(),
+                    child: NoteListPanel(
+                      onCollapse: () =>
+                          setState(() => _listCollapsed = true),
+                    ),
+                  ),
+                  _AnimatedWidth(
+                    visible: !zen && showList && _listCollapsed,
+                    width: 22,
+                    child: _CollapsedListHandle(
+                      onExpand: () =>
+                          setState(() => _listCollapsed = false),
+                    ),
                   ),
                   Expanded(
                     child: ColoredBox(
@@ -273,7 +317,11 @@ class _AppShellState extends State<AppShell>
     );
   }
 
-  Widget _buildMain(AppState state, bool zen) {
+  Widget _buildMain(
+    AppState state,
+    bool zen, {
+    required bool hasSecondary,
+  }) {
     switch (state.view) {
       case 'calendar':
         return const CalendarPage();
@@ -283,16 +331,52 @@ class _AppShellState extends State<AppShell>
         return const SettingsPage();
       default:
         if (state.current != null) {
-          return EditorPage(
+          final primary = EditorPage(
             mobile: false,
             zen: zen,
             onToggleZen: _toggleZen,
+          );
+          final secondary = state.secondarySession;
+          if (hasSecondary && secondary != null && !zen) {
+            return Row(
+              children: [
+                Expanded(child: primary),
+                Container(
+                  width: 1,
+                  color: AppPalette.of(context).line,
+                ),
+                Expanded(
+                  child: EditorPage(
+                    mobile: false,
+                    sessionOverride: secondary,
+                    secondary: true,
+                    onCloseSecondary: () => state.closeSecondary(),
+                  ),
+                ),
+              ],
+            );
+          }
+          return primary;
+        }
+        if (hasSecondary && state.secondarySession != null && !zen) {
+          return EditorPage(
+            mobile: false,
+            sessionOverride: state.secondarySession,
+            secondary: true,
+            onCloseSecondary: () => state.closeSecondary(),
           );
         }
         return const EmptyDesk();
     }
   }
 }
+
+/// 「笔记」入口只认这三个范围。记住的上次范围如果落在回收站或搜索，
+/// 就回到今日，免得点进去是一片空白。
+String _noteScope(String lastListView) =>
+    const {'today', 'all', 'time', 'favorites', 'tags'}.contains(lastListView)
+        ? lastListView
+        : 'today';
 
 class _MobileShell extends StatelessWidget {
   const _MobileShell({required this.state});
@@ -344,18 +428,57 @@ class _MobileShell extends StatelessWidget {
               state.setView('settings');
               break;
             default:
-              const listViews = {
-                'today',
-                'all',
-                'tags',
-                'trash',
-                'search',
-              };
-              state.setView(
-                listViews.contains(state.view) ? 'today' : state.listView,
-              );
+              // 回到上次看的范围（今日 / 全部 / 标签），而不是每次都跳回今日。
+              state.setView(_noteScope(state.listView));
           }
         },
+      ),
+    );
+  }
+}
+
+class _CollapsedListHandle extends StatelessWidget {
+  const _CollapsedListHandle({required this.onExpand});
+  final VoidCallback onExpand;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surface,
+        border: Border(right: BorderSide(color: c.line)),
+      ),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 74),
+          child: Tooltip(
+            message: _t('展开笔记列表'),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onExpand,
+              child: Container(
+                width: 18,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: c.accentSoft,
+                  borderRadius: const BorderRadius.horizontal(
+                    right: Radius.circular(6),
+                  ),
+                  border: Border.all(
+                    color: c.accent.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Icon(
+                  LucideIcons.panelLeftOpen,
+                  size: 12,
+                  color: c.accent,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -421,29 +544,26 @@ class _Rail extends StatelessWidget {
             child: const Seal(size: 32, radius: 9),
           ),
           const SizedBox(height: 20),
+          // 今日 / 全部 / 标签 已经是同一个列表页里的范围切换，
+          // 侧栏只留一个「笔记」入口，点进去回到上次看的范围。
           _RailItem(
-            icon: LucideIcons.sun,
-            label: _t('今日'),
-            active: active == 'today',
-            onTap: () => onGo('today'),
-          ),
-          _RailItem(
-            icon: LucideIcons.library,
-            label: _t('全部'),
-            active: active == 'all',
-            onTap: () => onGo('all'),
+            icon: LucideIcons.notebook,
+            label: _t('笔记'),
+            active: const {
+              'today',
+              'all',
+              'time',
+              'favorites',
+              'tags',
+              'search',
+            }.contains(active),
+            onTap: () => onGo(_noteScope(state.listView)),
           ),
           _RailItem(
             icon: LucideIcons.calendarDays,
             label: _t('日历'),
             active: active == 'calendar',
             onTap: () => onGo('calendar'),
-          ),
-          _RailItem(
-            icon: LucideIcons.tag,
-            label: _t('标签'),
-            active: active == 'tags',
-            onTap: () => onGo('tags'),
           ),
           _RailItem(
             icon: LucideIcons.chartNoAxesColumn,
@@ -825,6 +945,8 @@ const Map<String, String> _en = <String, String>{
   '命令面板 · Ctrl K': 'Command palette · Ctrl K',
   '专注模式 · Ctrl Shift F': 'Focus mode · Ctrl Shift F',
   '切换外观': 'Toggle appearance',
+  '展开笔记列表': 'Show note list',
+  '收起笔记列表': 'Hide note list',
   // 标题栏
   '此记': 'ThisNote',
   '无题': 'Untitled',

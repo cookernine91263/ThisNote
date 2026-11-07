@@ -12,6 +12,7 @@ import '../../core/ui.dart';
 import '../../state/app_state.dart';
 import '../ai_chat/ai_chat_panel.dart';
 import 'code_block.dart';
+import 'table_embed.dart';
 import 'color_picker.dart';
 import 'font_picker.dart';
 import 'huazi.dart';
@@ -50,6 +51,7 @@ const Map<String, String> _en = <String, String>{
   '待办清单': 'To-do list',
   '引用': 'Quote',
   '代码块': 'Code block',
+  '表格': 'Table',
   '链接': 'Link',
   '插入图片': 'Insert image',
   '粘贴图片（来自剪贴板）': 'Paste image (from clipboard)',
@@ -312,6 +314,11 @@ class EditorToolbar extends StatelessWidget {
                 showCodeBlockDialog(context, controller);
               }
             },
+          ),
+          _ToolButton(
+            icon: LucideIcons.table,
+            tooltip: _t('表格'),
+            onPressed: () => insertTable(context, controller),
           ),
           _ToolButton(
             icon: LucideIcons.link,

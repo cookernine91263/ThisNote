@@ -9,6 +9,7 @@ import 'core/i18n.dart';
 import 'core/theme_reveal.dart';
 import 'features/lock_screen.dart';
 import 'features/onboarding.dart';
+import 'features/recovery_screen.dart';
 import 'features/shell.dart';
 import 'features/splash.dart';
 import 'state/app_state.dart';
@@ -18,11 +19,18 @@ class ThisNoteApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final settings = state.settings;
-    final lang = AppLang.fromCode(settings.language);
+    final config = context.select<AppState,
+        (ThemeMode, String, double, String)>(
+      (state) => (
+        state.settings.themeMode,
+        state.settings.language,
+        state.settings.uiScale,
+        state.settings.accent,
+      ),
+    );
+    final lang = AppLang.fromCode(config.$2);
     // 界面字号只走 textScaler，主题里的字号保持 1.0，避免双重放大。
-    final scale = settings.uiScale.clamp(0.9, 1.15);
+    final scale = config.$3.clamp(0.9, 1.15);
     return ValueListenableBuilder<bool>(
       valueListenable: ThemeReveal.revealing,
       builder: (context, revealing, _) => RepaintBoundary(
@@ -33,14 +41,14 @@ class ThisNoteApp extends StatelessWidget {
           theme: AppTheme.build(
             Brightness.light,
             1.0,
-            accent: settings.accent,
+            accent: config.$4,
           ),
           darkTheme: AppTheme.build(
             Brightness.dark,
             1.0,
-            accent: settings.accent,
+            accent: config.$4,
           ),
-          themeMode: settings.themeMode,
+          themeMode: config.$1,
           // 圆孔揭示自己负责这次过渡；再叠一层颜色渐变，
           // 圆孔边缘就会透出还没稳定的颜色。
           themeAnimationDuration:
@@ -90,13 +98,22 @@ class _AppGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    if (state.startupError != null) {
-      return _StartupErrorScreen(error: state.startupError!);
-    }
-    if (!state.ready) return const SplashScreen();
-    if (state.locked) return const LockScreen();
-    if (!state.settings.onboardingDone) return const OnboardingScreen();
+    final state = context.read<AppState>();
+    final gate = context.select<AppState,
+        (String?, bool, bool, bool, bool)>(
+      (value) => (
+        value.startupError,
+        value.ready,
+        value.locked,
+        value.settings.onboardingDone,
+        value.pendingRecovery.isNotEmpty,
+      ),
+    );
+    if (gate.$1 != null) return _StartupErrorScreen(error: gate.$1!);
+    if (!gate.$2) return const SplashScreen();
+    if (gate.$3) return const LockScreen();
+    if (!gate.$4) return const OnboardingScreen();
+    if (gate.$5) return RecoveryScreen(state: state);
     return const AppShell();
   }
 }

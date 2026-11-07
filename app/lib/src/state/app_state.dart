@@ -21,7 +21,10 @@ import '../data/templates.dart';
 import '../features/editor/code_block.dart';
 import '../features/editor/huazi.dart';
 import '../services/clipboard_image.dart';
+import '../services/docx_import.dart';
 import '../services/markdown_import.dart';
+import '../services/secrets_store.dart';
+import '../services/search_replace.dart';
 import 'ai_chat.dart';
 
 /// 只在状态层生成的几条文案（新建文件夹、副本、导入占位标题）。
@@ -29,6 +32,7 @@ const _en = <String, String>{
   '新文件夹': 'New folder',
   '{title} 副本': '{title} (copy)',
   '导入的笔记': 'Imported note',
+  '无题': 'Untitled',
 };
 
 enum SaveStatus { idle, saving, saved, error }
@@ -37,21 +41,48 @@ class AppState extends ChangeNotifier {
   AppState({NoteStore? store}) : store = store ?? NoteStore();
 
   final NoteStore store;
+  final SecretsStore secrets = SecretsStore();
   final Uuid _uuid = const Uuid();
+  bool _secretsExternal = false;
 
   bool ready = false;
   bool locked = false;
   String? startupError;
   AppSettings settings = AppSettings();
   List<NoteMeta> notes = [];
+  List<UserTemplate> userTemplates = [];
   List<Folder> folders = [];
+  List<JournalEntry> pendingRecovery = [];
+  Map<String, String> _indexTexts = <String, String>{};
+  int _dataRevision = 0;
+  int _tagRevision = -1;
+  Map<String, int> _tagCache = const {};
+  int _dayRevision = -1;
+  Map<String, int> _dayCache = const {};
+  int _foldersRevision = 0;
+  int _settingsRevision = 0;
+  String _visibleKey = '';
+  List<NoteMeta> _visibleCache = const [];
+
+  void _touchData() => _dataRevision++;
+  void _touchFolders() => _foldersRevision++;
+
+  int get dataRevision => _dataRevision;
+  int get foldersRevision => _foldersRevision;
+  int get settingsRevision => _settingsRevision;
   String? folderFilter;
   Note? current;
   EditorSession? session;
+
+  /// 桌面分屏的第二个编辑会话。
+  Note? secondaryNote;
+  EditorSession? secondarySession;
   String view = 'today';
   String? tagFilter;
   DateTime? selectedDay;
   String query = '';
+  String _filterQuery = '';
+  Timer? _queryTimer;
   String sort = 'updated';
   SaveStatus saveStatus = SaveStatus.idle;
   String? lastSaveError;
@@ -60,6 +91,8 @@ class AppState extends ChangeNotifier {
   /// 这样续写旧稿也会算进今天。
   ActivityLog activity = ActivityLog();
   Timer? _activityTimer;
+  Timer? _libraryTimer;
+  Timer? _settingsTimer;
 
   bool _disposed = false;
 
@@ -67,22 +100,42 @@ class AppState extends ChangeNotifier {
     startupError = null;
     await store.init();
     settings = await store.loadSettings();
+    await _loadSecrets();
     I18n.lang = AppLang.fromCode(settings.language);
-    await _loadCustomFonts();
     notes = await store.loadLibrary();
     folders = await store.loadFolders();
     activity = await store.loadActivity();
+    userTemplates = await store.loadTemplates();
     await store.seedIfEmpty(notes);
-    notes = await store.loadLibrary();
-    const listViews = {'today', 'all', 'tags', 'trash', 'search'};
+    await _prepareIndex();
+    await _prepareRecovery();
+    // 用户字体只影响个别笔记，没必要挡住首帧；注册完再通知一次即可。
+    unawaited(_loadCustomFonts().then((_) => _notify()));
+    const listViews = {
+      'today',
+      'all',
+      'time',
+      'favorites',
+      'tags',
+      'trash',
+      'search',
+    };
     if (!listViews.contains(settings.lastListView)) {
       settings.lastListView = 'today';
     }
     view = settings.lastView;
     // 回收站和搜索只是临时视图：重启后回到上次的列表，避免一开机就停在回收站。
     if (view == 'trash' || view == 'search') view = settings.lastListView;
-    if (!const ['today', 'all', 'calendar', 'tags', 'stats', 'trash', 'search']
-        .contains(view)) {
+    if (!const [
+      'today',
+      'all',
+      'time',
+      'calendar',
+      'tags',
+      'stats',
+      'trash',
+      'search',
+    ].contains(view)) {
       view = 'today';
     }
     sort = settings.sort;
@@ -95,20 +148,146 @@ class AppState extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  Future<void> _loadSecrets() async {
+    final apiKey = await secrets.read('ai_api_key');
+    final password = await secrets.read('webdav_password');
+    if (apiKey != null) settings.aiSettings.apiKey = apiKey;
+    if (password != null) settings.webdavSettings.password = password;
+    _secretsExternal = apiKey != null || password != null;
+    // 旧版本把密钥放在 settings.json 里：能写进钥匙串就顺手迁走。
+    if (!_secretsExternal) {
+      if (settings.aiSettings.apiKey.isNotEmpty) {
+        _secretsExternal = await secrets.write(
+          'ai_api_key',
+          settings.aiSettings.apiKey,
+        );
+      }
+      if (settings.webdavSettings.password.isNotEmpty) {
+        final ok = await secrets.write(
+          'webdav_password',
+          settings.webdavSettings.password,
+        );
+        _secretsExternal = _secretsExternal || ok;
+      }
+      if (_secretsExternal) await _persistSettings();
+    }
+  }
+
+  Future<void> _persistSettings() async {
+    if (_secretsExternal) {
+      if (settings.aiSettings.apiKey.isEmpty) {
+        await secrets.delete('ai_api_key');
+      } else {
+        await secrets.write('ai_api_key', settings.aiSettings.apiKey);
+      }
+      if (settings.webdavSettings.password.isEmpty) {
+        await secrets.delete('webdav_password');
+      } else {
+        await secrets.write(
+          'webdav_password',
+          settings.webdavSettings.password,
+        );
+      }
+    }
+    await store.saveSettings(settings, includeSecrets: !_secretsExternal);
+  }
+
+  Future<void> _prepareRecovery() async {
+    final entries = await store.loadJournals();
+    final valid = <JournalEntry>[];
+    for (final entry in entries) {
+      final matches = notes.where((meta) => meta.id == entry.id);
+      final meta = matches.isEmpty ? null : matches.first;
+      if (meta == null || entry.savedAt.isAfter(meta.updatedAt)) {
+        valid.add(entry);
+      } else {
+        await store.deleteJournal(entry.id);
+      }
+    }
+    pendingRecovery = valid;
+  }
+
+  Future<void> recoverJournal(JournalEntry entry) async {
+    final note = await store.loadNote(entry.id);
+    if (note != null) {
+      note.title = entry.title;
+      note.delta = entry.delta;
+      note.text = entry.text;
+      note.words = countWords(entry.text);
+      note.updatedAt = DateTime.now();
+      await store.saveNote(note);
+      final index = notes.indexWhere((meta) => meta.id == note.id);
+      if (index >= 0) {
+        notes[index] = note.toMeta();
+      } else {
+        notes.insert(0, note.toMeta());
+      }
+      _indexTexts[note.id] = note.text;
+      await store.persistLibrary(notes);
+      await openNote(note.id, force: true);
+    }
+    await store.deleteJournal(entry.id);
+    pendingRecovery = pendingRecovery
+        .where((item) => item.id != entry.id)
+        .toList(growable: false);
+    _notify();
+  }
+
+  Future<void> discardJournal(JournalEntry entry) async {
+    await store.deleteJournal(entry.id);
+    pendingRecovery = pendingRecovery
+        .where((item) => item.id != entry.id)
+        .toList(growable: false);
+    _notify();
+  }
+
+  Future<void> _prepareIndex() async {
+    var index = await store.loadIndexTexts();
+    final legacy = notes.any((meta) => meta.text.isNotEmpty);
+    final missing = notes.any((meta) => !index.containsKey(meta.id));
+    if (legacy) await store.backupLibraryForMigration();
+    if (legacy || missing) {
+      await store.rebuildIndex(notes);
+      index = await store.loadIndexTexts();
+      await store.persistLibrary(notes);
+    }
+    _indexTexts = index;
+  }
+
+  /// 列表搜索、反链和替换都从这里取全文；当前打开的笔记优先用未保存的草稿。
+  String noteText(String id) {
+    final active = session;
+    if (active != null && active.note.id == id) return active.plainText;
+    final second = secondarySession;
+    if (second != null && second.note.id == id) return second.plainText;
+    final indexed = _indexTexts[id];
+    if (indexed != null) return indexed;
+    final matches = notes.where((meta) => meta.id == id);
+    return matches.isEmpty ? '' : matches.first.text;
+  }
+
   Future<void> retryInit() async {
     try {
       await init();
     } catch (e) {
-      startupError = e.toString();
-      _notify();
+      reportStartupError(e);
     }
+  }
+
+  void reportStartupError(Object error) {
+    startupError = error.toString();
+    _notify();
   }
 
   @override
   void dispose() {
     _disposed = true;
     _activityTimer?.cancel();
+    _libraryTimer?.cancel();
+    _settingsTimer?.cancel();
+    _queryTimer?.cancel();
     session?.dispose();
+    secondarySession?.dispose();
     super.dispose();
   }
 
@@ -123,6 +302,9 @@ class AppState extends ChangeNotifier {
       notes.where((n) => n.isTrashed).toList(growable: false);
 
   List<NoteMeta> get visibleNotes {
+    final key = '$view|$tagFilter|$folderFilter|$_filterQuery|$sort|'
+        '${selectedDay?.millisecondsSinceEpoch}|$_dataRevision|$_foldersRevision';
+    if (key == _visibleKey) return _visibleCache;
     Iterable<NoteMeta> list;
     switch (view) {
       case 'trash':
@@ -133,6 +315,9 @@ class AppState extends ChangeNotifier {
         list = activeNotes.where(
           (n) => n.day == today || dayKey(n.updatedAt) == today,
         );
+        break;
+      case 'time':
+        list = activeNotes;
         break;
       case 'calendar':
         final key = dayKey(selectedDay ?? DateTime.now());
@@ -145,56 +330,88 @@ class AppState extends ChangeNotifier {
           list = activeNotes.where((n) => n.tags.contains(tagFilter));
         }
         break;
+      case 'favorites':
+        list = activeNotes.where((n) => n.favorite);
+        break;
       default:
         list = activeNotes;
     }
-    if (folderFilter != null) {
-      if (folderFilter == '__unfiled__') {
+    // 「全部」是文件式的平铺列表：文件夹卡片代替里面的笔记，
+    // 所以这里只留下本层的笔记；进入文件夹后也只显示直属笔记。
+    if (view == 'all') {
+      if (folderFilter == null || folderFilter == '__unfiled__') {
         list = list.where((n) => n.folderId == null);
       } else {
-        final ids = folderTreeIds(folderFilter!);
-        list = list.where(
-          (n) => n.folderId != null && ids.contains(n.folderId),
-        );
+        list = list.where((n) => n.folderId == folderFilter);
       }
     }
-    final q = query.trim().toLowerCase();
+    final q = _filterQuery.trim().toLowerCase();
     if (q.isNotEmpty) {
       list = list.where((n) {
         return n.title.toLowerCase().contains(q) ||
-            n.text.toLowerCase().contains(q) ||
+            noteText(n.id).toLowerCase().contains(q) ||
             n.tags.any((t) => t.toLowerCase().contains(q));
       });
     }
     final result = list.toList();
-    final grouped = view == 'all' || view == 'calendar';
+    final grouped = view == 'time' || view == 'calendar';
     result.sort((a, b) {
-      // 分组视图先按日期倒序，否则「最近更新」会把不同日期交错排在一起，
-      // 分组标题会重复出现，手动排序也会被打散。手动排序本质上按天分组，
-      // 所以扁平视图里也先按日期排。
-      if ((grouped || sort == 'manual') && a.day != b.day) {
-        return b.day.compareTo(a.day);
-      }
+      // 「时间」按天分组倒序；「全部」是平铺的，不插日期标题。
+      if (grouped && a.day != b.day) return b.day.compareTo(a.day);
       if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
-      switch (sort) {
-        case 'created':
-          return b.createdAt.compareTo(a.createdAt);
-        case 'title':
-          return a.title.compareTo(b.title);
-        case 'words':
-          return b.words.compareTo(a.words);
-        case 'manual':
-          final byOrder = a.sortOrder.compareTo(b.sortOrder);
-          if (byOrder != 0) return byOrder;
-          return b.updatedAt.compareTo(a.updatedAt);
-        default:
-          return b.updatedAt.compareTo(a.updatedAt);
-      }
+      return compareSort(a, b);
     });
+    // 「全部」里固定的笔记停在手动顺序的位置，不参与「最近 / 创建 / 字数」重排。
+    final ordered = view == 'all' && sort != 'manual'
+        ? _withFixedAnchors(result)
+        : result;
+    _visibleKey = key;
+    _visibleCache = ordered;
+    return ordered;
+  }
+
+  int compareSort(NoteMeta a, NoteMeta b) {
+    switch (sort) {
+      case 'created':
+        return b.createdAt.compareTo(a.createdAt);
+      case 'title':
+        return a.title.compareTo(b.title);
+      case 'words':
+        return b.words.compareTo(a.words);
+      case 'manual':
+        final byOrder = a.sortOrder.compareTo(b.sortOrder);
+        if (byOrder != 0) return byOrder;
+        return b.updatedAt.compareTo(a.updatedAt);
+      default:
+        return b.updatedAt.compareTo(a.updatedAt);
+    }
+  }
+
+  /// 固定笔记按记录下来的顺序位置插回排好序的列表：
+  /// 其它笔记在空位之间正常排序，固定笔记本身不会被「最近修改」顶下去。
+  List<NoteMeta> _withFixedAnchors(List<NoteMeta> sorted) {
+    final fixed = sorted.where((n) => n.fixed && !n.pinned).toList();
+    if (fixed.isEmpty) return sorted;
+    fixed.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final movable = sorted.where((n) => !(n.fixed && !n.pinned)).toList();
+    final result = <NoteMeta>[];
+    var movableIndex = 0;
+    var fixedBefore = 0;
+    for (final note in fixed) {
+      final wantBefore = ((note.sortOrder / 10).round() - fixedBefore)
+          .clamp(0, movable.length);
+      while (movableIndex < wantBefore) {
+        result.add(movable[movableIndex++]);
+      }
+      result.add(note);
+      fixedBefore++;
+    }
+    result.addAll(movable.skip(movableIndex));
     return result;
   }
 
   Map<String, int> get tagCounts {
+    if (_tagRevision == _dataRevision) return _tagCache;
     final map = <String, int>{};
     for (final n in activeNotes) {
       for (final t in n.tags) {
@@ -203,7 +420,9 @@ class AppState extends ChangeNotifier {
     }
     final entries = map.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
-    return Map.fromEntries(entries);
+    _tagRevision = _dataRevision;
+    _tagCache = Map.fromEntries(entries);
+    return _tagCache;
   }
 
   List<String> get allTags => tagCounts.keys.toList();
@@ -214,9 +433,13 @@ class AppState extends ChangeNotifier {
 
   int get totalWords => activeNotes.fold(0, (s, n) => s + n.words);
 
+  int get totalWritingSeconds =>
+      activeNotes.fold(0, (s, n) => s + n.writingSeconds);
+
   /// 每天写下的字数：以活跃度日志为准（续写旧稿也算），
   /// 没有日志的历史日期回退到按创建日归集。
   Map<String, int> get wordsByDay {
+    if (_dayRevision == _dataRevision) return _dayCache;
     final map = <String, int>{};
     for (final n in activeNotes) {
       map[n.day] = (map[n.day] ?? 0) + n.words;
@@ -225,7 +448,9 @@ class AppState extends ChangeNotifier {
       final recorded = entry.value.words;
       if (recorded > (map[entry.key] ?? 0)) map[entry.key] = recorded;
     }
-    return map;
+    _dayRevision = _dataRevision;
+    _dayCache = map;
+    return _dayCache;
   }
 
   int get todayWords => wordsByDay[dayKey(DateTime.now())] ?? 0;
@@ -274,26 +499,43 @@ class AppState extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   void setView(String v) {
-    const listViews = {'today', 'all', 'tags', 'trash', 'search'};
+    const listViews = {
+      'today',
+      'all',
+      'time',
+      'favorites',
+      'tags',
+      'trash',
+      'search',
+    };
     final listChanged =
         listViews.contains(v) && settings.lastListView != v;
     if (listViews.contains(v)) settings.lastListView = v;
     if (view == v && tagFilter == null && folderFilter == null) {
-      if (listChanged) store.saveSettings(settings);
+      if (listChanged) unawaited(_persistSettings());
       return;
     }
     view = v;
     tagFilter = null;
     folderFilter = null;
     if (v == 'today') selectedDay = null;
-    if (v != 'search') query = '';
+    if (v != 'search') {
+      // query 和 _filterQuery 必须一起清：只清前者会让列表继续按旧
+      // 关键词过滤，但搜索框已经消失。
+      query = '';
+      _filterQuery = '';
+      _queryTimer?.cancel();
+    }
     settings.lastView = v;
-    store.saveSettings(settings);
+    unawaited(_persistSettings());
     _notify();
   }
 
   /// 手机底部「笔记」tab 回到这里。
   String get listView => settings.lastListView;
+
+  /// 列表的 select 需要监听它；防抖结束后过滤词变了，列表才会重排。
+  String get filterQuery => _filterQuery;
 
   void selectTag(String tag) {
     view = 'tags';
@@ -316,16 +558,114 @@ class AppState extends ChangeNotifier {
     _notify();
   }
 
-  void setQuery(String q) {
+  void setQuery(String q, {bool debounce = false}) {
     query = q;
-    if (view != 'search' && q.isNotEmpty) view = 'search';
+    if (q.isNotEmpty) {
+      view = 'search';
+      // 全局搜索不应该继承上一次的文件夹/标签筛选，否则结果会莫名少一截。
+      tagFilter = null;
+      folderFilter = null;
+    }
+    _queryTimer?.cancel();
+    if (!debounce || q.isEmpty) {
+      _filterQuery = q;
+      _notify();
+      return;
+    }
     _notify();
+    _queryTimer = Timer(const Duration(milliseconds: 160), () {
+      _filterQuery = q;
+      _notify();
+    });
+  }
+
+  /// 替换前给界面一个「会改多少处」的估计。
+  int countMatchesInLibrary(String query, {bool caseSensitive = false}) {
+    if (query.isEmpty) return 0;
+    var total = 0;
+    for (final meta in activeNotes) {
+      total += countOccurrences(
+        noteText(meta.id),
+        query,
+        caseSensitive: caseSensitive,
+      );
+    }
+    return total;
+  }
+
+  /// 跨笔记替换。每篇改动前先留一份历史快照，出错也能回到原稿。
+  Future<int> replaceAllInLibrary(
+    String query,
+    String replacement, {
+    bool caseSensitive = false,
+    void Function(int done, int total)? onProgress,
+  }) async {
+    if (query.isEmpty) return 0;
+    final candidates = activeNotes
+        .where((meta) =>
+            countOccurrences(
+              noteText(meta.id),
+              query,
+              caseSensitive: caseSensitive,
+            ) >
+            0)
+        .toList();
+    if (candidates.isEmpty) return 0;
+    final currentId = current?.id;
+    final reopenCurrent =
+        currentId != null && candidates.any((meta) => meta.id == currentId);
+    if (reopenCurrent) await closeEditor();
+
+    var replaced = 0;
+    var done = 0;
+    for (final meta in candidates) {
+      try {
+        final note = await store.loadNote(meta.id);
+        if (note != null) {
+          final result = replaceInDelta(
+            note.delta,
+            query,
+            replacement,
+            caseSensitive: caseSensitive,
+          );
+          if (result.count > 0) {
+            await store.saveSnapshot(note);
+            note.delta = result.delta;
+            note.text = result.text;
+            note.words = countWords(note.text);
+            note.updatedAt = DateTime.now();
+            await store.saveNote(note);
+            final index = notes.indexWhere((item) => item.id == note.id);
+            if (index >= 0) notes[index] = note.toMeta();
+            replaced += result.count;
+          }
+        }
+      } catch (_) {
+        // 单篇失败不拖垮整批；下一轮可以再替换。
+      }
+      done++;
+      onProgress?.call(done, candidates.length);
+    }
+    await _flushLibrary();
+    if (reopenCurrent) await openNote(currentId, autofocus: false);
+    _notify();
+    return replaced;
   }
 
   void setSort(String s) {
+    // 切到手动排序时，把眼前「文件夹 + 笔记」的顺序原样冻结成共用顺序。
+    if (s == 'manual' && sort != 'manual') {
+      if (view == 'all') {
+        prepareUnifiedOrder();
+        unawaited(store.persistFolders(folders));
+        unawaited(store.persistLibrary(notes));
+      } else {
+        prepareManualOrder();
+      }
+    }
     sort = s;
     settings.sort = s;
-    store.saveSettings(settings);
+    unawaited(_persistSettings());
     _notify();
   }
 
@@ -376,6 +716,13 @@ class AppState extends ChangeNotifier {
         .length;
   }
 
+  int folderWords(String id) {
+    final ids = folderTreeIds(id);
+    return activeNotes
+        .where((n) => n.folderId != null && ids.contains(n.folderId))
+        .fold(0, (sum, n) => sum + n.words);
+  }
+
   Future<Folder> createFolder(String name, {String? parentId}) async {
     final siblings = childFolders(parentId);
     final folder = Folder(
@@ -385,6 +732,7 @@ class AppState extends ChangeNotifier {
       order: siblings.isEmpty ? 0 : siblings.last.order + 10,
     );
     folders.add(folder);
+    _touchFolders();
     await store.persistFolders(folders);
     _notify();
     return folder;
@@ -394,6 +742,7 @@ class AppState extends ChangeNotifier {
     final folder = folderById(id);
     if (folder == null) return;
     folder.name = name.trim().isEmpty ? folder.name : name.trim();
+    _touchFolders();
     await store.persistFolders(folders);
     _notify();
   }
@@ -407,19 +756,98 @@ class AppState extends ChangeNotifier {
     }
     for (final note in notes.where((n) => n.folderId == id)) {
       note.folderId = parent;
+      _syncOpenMeta(note);
     }
     folders.removeWhere((f) => f.id == id);
     if (folderFilter == id) folderFilter = null;
+    _touchFolders();
+    _touchData();
     await store.persistFolders(folders);
     await store.persistLibrary(notes);
     _notify();
   }
 
+  Future<void> toggleFolderPin(Folder folder) async {
+    folder.pinned = !folder.pinned;
+    _touchFolders();
+    await store.persistFolders(folders);
+    _notify();
+  }
+
+  Future<void> toggleFolderFixed(Folder folder) async {
+    folder.fixed = !folder.fixed;
+    _touchFolders();
+    await store.persistFolders(folders);
+    _notify();
+  }
+
+  Future<void> setFoldersPinned(Iterable<String> ids, bool value) async {
+    final idSet = ids.toSet();
+    for (final folder in folders) {
+      if (idSet.contains(folder.id)) folder.pinned = value;
+    }
+    _touchFolders();
+    await store.persistFolders(folders);
+    _notify();
+  }
+
+  Future<void> setFoldersFixed(Iterable<String> ids, bool value) async {
+    final idSet = ids.toSet();
+    for (final folder in folders) {
+      if (idSet.contains(folder.id)) folder.fixed = value;
+    }
+    _touchFolders();
+    await store.persistFolders(folders);
+    _notify();
+  }
+
+  /// 把若干文件夹移到 [parentId] 下面；null 表示放到最外层。
+  Future<void> moveFoldersToFolder(
+    Iterable<String> ids,
+    String? parentId,
+  ) async {
+    final idSet = ids.toSet();
+    var order = childFolders(parentId)
+        .where((f) => !idSet.contains(f.id))
+        .fold<int>(0, (max, f) => f.order > max ? f.order : max);
+    for (final id in ids) {
+      final folder = folderById(id);
+      if (folder == null) continue;
+      if (parentId != null &&
+          (id == parentId || folderTreeIds(id).contains(parentId))) {
+        continue;
+      }
+      folder.parentId = parentId;
+      order += 10;
+      folder.order = order;
+    }
+    _touchFolders();
+    await store.persistFolders(folders);
+    _notify();
+  }
+
+  Future<void> deleteFolders(Iterable<String> ids) async {
+    final list = ids.toList();
+    for (final id in list) {
+      await deleteFolder(id);
+    }
+  }
+
   Future<void> moveNoteToFolder(String noteId, String? folderId) async {
     final index = notes.indexWhere((n) => n.id == noteId);
     if (index < 0) return;
-    notes[index].folderId = folderId;
-    if (current?.id == noteId) current!.folderId = folderId;
+    final note = notes[index];
+    note.folderId = folderId;
+    if (sort == 'manual') {
+      final siblings = notes
+          .where((n) =>
+              n.folderId == folderId && !n.isTrashed && n.id != noteId)
+          .toList()
+        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      note.sortOrder = siblings.isEmpty ? 10 : siblings.last.sortOrder + 10;
+    }
+    _syncOpenMeta(note);
+    _touchData();
     await store.persistLibrary(notes);
     _notify();
   }
@@ -445,11 +873,17 @@ class AppState extends ChangeNotifier {
   /// 把当前看到的顺序冻结成手动顺序。
   Future<void> beginManualOrder() async {
     if (sort == 'manual') return;
-    prepareManualOrder();
+    if (view == 'all') {
+      prepareUnifiedOrder();
+    } else {
+      prepareManualOrder();
+    }
     sort = 'manual';
     settings.sort = 'manual';
+    _touchData();
     await store.persistLibrary(notes);
-    await store.saveSettings(settings);
+    if (view == 'all') await store.persistFolders(folders);
+    await _persistSettings();
     _notify();
   }
 
@@ -459,14 +893,14 @@ class AppState extends ChangeNotifier {
     String noteId,
     String targetId, {
     bool after = false,
-  }) async {
-    if (noteId == targetId) return false;
+  }) async {    if (noteId == targetId) return false;
     final sourceIndex = notes.indexWhere((n) => n.id == noteId);
     final targetIndex = notes.indexWhere((n) => n.id == targetId);
     if (sourceIndex < 0 || targetIndex < 0) return false;
     final source = notes[sourceIndex];
     final target = notes[targetIndex];
     if (source.isTrashed || target.isTrashed) return false;
+    if (source.fixed) return false;
     if (source.day != target.day) return false;
     // 置顶的笔记在列表里永远排在最前，跨过这条界线调序不会生效。
     if (source.pinned != target.pinned) return false;
@@ -490,11 +924,207 @@ class AppState extends ChangeNotifier {
     }
     sort = 'manual';
     settings.sort = 'manual';
+    _touchData();
     // 先把新顺序推给界面，再落盘：拖拽松手时列表要停在预览的位置，
     // 不能先闪回旧顺序再跳一次。
     _notify();
     await store.persistLibrary(notes);
-    await store.saveSettings(settings);
+    await _persistSettings();
+    return true;
+  }
+
+  NoteMeta? metaById(String id) {
+    for (final note in notes) {
+      if (note.id == id) return note;
+    }
+    return null;
+  }
+
+  /// 「全部」里当前这一层要显示的文件夹卡片。
+  List<Folder> levelFolders() {
+    if (view != 'all' || folderFilter == '__unfiled__') return const [];
+    return childFolders(folderFilter);
+  }
+
+  int _entryKey(Object entry) =>
+      entry is Folder ? entry.order : (entry as NoteMeta).sortOrder;
+
+  bool _entryFixed(Object entry) =>
+      entry is Folder ? entry.fixed : (entry as NoteMeta).fixed;
+
+  /// 文件夹卡片和笔记卡片在「全部」里共用一条顺序。
+  /// 非手动排序时文件夹先排成一组；手动排序时两者按同一条数字顺序合并。
+  List<Object> get listEntries {
+    if (view != 'all') return List<Object>.from(visibleNotes);
+    final folders = levelFolders();
+    final notes = visibleNotes;
+    if (sort != 'manual') {
+      final pinnedNotes = notes.where((n) => n.pinned).toList();
+      final pinnedFolders = folders.where((f) => f.pinned).toList();
+      final restFolders = folders.where((f) => !f.pinned).toList();
+      final restNotes = notes.where((n) => !n.pinned).toList();
+      return [
+        ...pinnedNotes,
+        ...pinnedFolders,
+        ...restFolders,
+        ...restNotes,
+      ];
+    }
+    final pinned = <Object>[
+      ...notes.where((n) => n.pinned),
+      ...folders.where((f) => f.pinned),
+    ]..sort((a, b) => _entryKey(a).compareTo(_entryKey(b)));
+    final merged = <Object>[
+      ...folders.where((f) => !f.pinned),
+      ...notes.where((n) => !n.pinned),
+    ]..sort((a, b) {
+        final byKey = _entryKey(a).compareTo(_entryKey(b));
+        if (byKey != 0) return byKey;
+        final aFolder = a is Folder;
+        final bFolder = b is Folder;
+        if (aFolder != bFolder) return aFolder ? -1 : 1;
+        if (a is Folder && b is Folder) {
+          return a.name.compareTo(b.name);
+        }
+        if (a is NoteMeta && b is NoteMeta) {
+          return a.title.compareTo(b.title);
+        }
+        return 0;
+      });
+    return [...pinned, ...merged];
+  }
+
+  /// 拖动开始时冻结「文件夹 + 笔记」的当前顺序，不改排序模式、不通知界面。
+  void prepareUnifiedOrder() {
+    if (view != 'all') {
+      prepareManualOrder();
+      return;
+    }
+    var order = 0;
+    for (final entry in listEntries) {
+      order += 10;
+      if (entry is Folder) {
+        entry.order = order;
+      } else {
+        (entry as NoteMeta).sortOrder = order;
+      }
+    }
+    _touchData();
+    _touchFolders();
+  }
+
+  /// 在「全部」里把一张卡片插到另一张卡片的上面或下面。
+  /// [sourceIsFolder] / [targetIsFolder] 区分文件夹卡片与笔记卡片。
+  Future<bool> reorderListEntry(
+    String sourceId,
+    String targetId, {
+    bool after = false,
+    bool sourceIsFolder = false,
+    bool targetIsFolder = false,
+  }) async {
+    if (sourceId == targetId) return false;
+    final sourceFolder = sourceIsFolder ? folderById(sourceId) : null;
+    final sourceNote = sourceIsFolder ? null : metaById(sourceId);
+    if (sourceFolder == null && sourceNote == null) return false;
+    if (sourceNote != null && sourceNote.isTrashed) return false;
+    if (sourceFolder?.fixed == true || sourceNote?.fixed == true) return false;
+    // 调用方没标类型时，按 id 推断目标是不是文件夹。
+    final folderTarget = targetIsFolder ||
+        (!targetIsFolder &&
+            metaById(targetId) == null &&
+            folderById(targetId) != null);
+    if (folderTarget && folderById(targetId) == null) return false;
+    if (!folderTarget) {
+      final target = metaById(targetId);
+      if (target == null || target.isTrashed) return false;
+      if (sourceNote != null && sourceNote.pinned != target.pinned) return false;
+    }
+    if (sourceFolder != null &&
+        folderTarget &&
+        folderTreeIds(sourceId).contains(targetId)) {
+      return false;
+    }
+
+    // 固定卡片只锁住自己的位置：其它卡片可以自由跨过它，
+    // 移动时只重排「非固定」卡片，固定卡片仍留在原来的槽位。
+    final before = listEntries;
+    final sourceIsNote = sourceNote != null;
+    final sourcePinned = sourceNote?.pinned ?? false;
+    bool movableEntry(Object entry) {
+      if (_entryFixed(entry)) return false;
+      if (entry is NoteMeta) {
+        return sourceIsNote ? entry.pinned == sourcePinned : !entry.pinned;
+      }
+      return sourceIsNote ? !sourcePinned : true;
+    }
+
+    final sourceIndex = before.indexWhere(
+      (e) => e is Folder ? e.id == sourceId : (e as NoteMeta).id == sourceId,
+    );
+    if (sourceIndex < 0) return false;
+    final source = before[sourceIndex];
+    final fixedIndices = <int>{};
+    for (var i = 0; i < before.length; i++) {
+      if (!movableEntry(before[i])) fixedIndices.add(i);
+    }
+    final freeSlots = <int>[
+      for (var i = 0; i < before.length; i++)
+        if (!fixedIndices.contains(i)) i,
+    ];
+    if (freeSlots.isEmpty) return false;
+    final movable = before
+        .where(movableEntry)
+        .where((e) => (e is Folder ? e.id : (e as NoteMeta).id) != sourceId)
+        .toList();
+
+    final targetIndex = before.indexWhere(
+      (e) => e is Folder ? e.id == targetId : (e as NoteMeta).id == targetId,
+    );
+    int rank;
+    if (targetIndex < 0) {
+      rank = movable.length;
+    } else if (movableEntry(before[targetIndex])) {
+      final target = before[targetIndex];
+      rank = movable.indexWhere(
+        (e) => (e is Folder ? e.id : (e as NoteMeta).id) ==
+            (target is Folder ? target.id : (target as NoteMeta).id),
+      );
+      if (rank < 0) rank = movable.length;
+      if (after) rank += 1;
+    } else {
+      final left = freeSlots.where((s) => s < targetIndex).toList();
+      final right = freeSlots.where((s) => s > targetIndex).toList();
+      final slot = after
+          ? (right.isNotEmpty ? right.first : left.last)
+          : (left.isNotEmpty ? left.last : right.first);
+      rank = freeSlots.where((s) => s < slot).length;
+    }
+    movable.insert(rank.clamp(0, movable.length), source);
+
+    final entries = List<Object?>.filled(before.length, null);
+    for (final i in fixedIndices) {
+      entries[i] = before[i];
+    }
+    var next = 0;
+    for (var i = 0; i < entries.length; i++) {
+      entries[i] ??= movable[next++];
+    }
+    for (var i = 0; i < entries.length; i++) {
+      final order = (i + 1) * 10;
+      if (entries[i] is Folder) {
+        (entries[i] as Folder).order = order;
+      } else {
+        (entries[i] as NoteMeta).sortOrder = order;
+      }
+    }
+    sort = 'manual';
+    settings.sort = 'manual';
+    _touchData();
+    _touchFolders();
+    _notify();
+    await store.persistLibrary(notes);
+    await store.persistFolders(folders);
+    await _persistSettings();
     return true;
   }
 
@@ -524,6 +1154,7 @@ class AppState extends ChangeNotifier {
         siblings[i].order = (i + 1) * 10;
       }
     }
+    _touchFolders();
     await store.persistFolders(folders);
     _notify();
   }
@@ -532,20 +1163,44 @@ class AppState extends ChangeNotifier {
   // 笔记
   // ---------------------------------------------------------------------------
 
+  /// 桌面标签页里打开的笔记 id，按打开顺序排列。
+  final List<String> openTabs = <String>[];
+
+  /// 拖动标签栏调整打开顺序。[index] 是移除前的插入位置。
+  void moveTabToIndex(String id, int index) {
+    final from = openTabs.indexOf(id);
+    if (from < 0) return;
+    openTabs.removeAt(from);
+    final target = index > from ? index - 1 : index;
+    openTabs.insert(target.clamp(0, openTabs.length), id);
+    _notify();
+  }
+
   Future<void> openNote(
     String id, {
     bool autofocus = true,
     bool force = false,
   }) async {
     if (current?.id == id) return;
+    if (secondaryNote?.id == id) await closeSecondary();
     await closeEditor();
     final note = await store.loadNote(id);
     if (note == null) return;
     final matches = notes.where((n) => n.id == id);
     final meta = matches.isEmpty ? null : matches.first;
     if (meta != null) {
-      note.folderId = meta.folderId;
-      note.sortOrder = meta.sortOrder;
+      note
+        ..folderId = meta.folderId
+        ..sortOrder = meta.sortOrder
+        ..pinned = meta.pinned
+        ..fixed = meta.fixed
+        ..favorite = meta.favorite;
+    }
+    if (!openTabs.contains(id)) {
+      openTabs.add(id);
+      while (openTabs.length > 8) {
+        openTabs.removeAt(0);
+      }
     }
     current = note;
     session = EditorSession(app: this, note: note);
@@ -580,14 +1235,116 @@ class AppState extends ChangeNotifier {
     session = null;
     current = null;
     saveStatus = SaveStatus.idle;
+    await _flushLibrary();
     await persistActivity();
     _notify();
   }
 
   /// 关窗/退出前调用：正文与活跃度都落盘，再交给窗口销毁。
   Future<void> closeApp() async {
+    await closeSecondary();
     await closeEditor();
+    openTabs.clear();
+    await persistSettingsNow();
+    await _flushLibrary();
     await persistActivity();
+  }
+
+  Future<void> openSecondaryNote(String id) async {
+    if (id == current?.id || id == secondaryNote?.id) return;
+    await closeSecondary();
+    final note = await store.loadNote(id);
+    if (note == null) return;
+    final matches = notes.where((item) => item.id == id);
+    final meta = matches.isEmpty ? null : matches.first;
+    if (meta != null) {
+      note
+        ..folderId = meta.folderId
+        ..sortOrder = meta.sortOrder
+        ..pinned = meta.pinned
+        ..fixed = meta.fixed
+        ..favorite = meta.favorite;
+    }
+    secondaryNote = note;
+    secondarySession = EditorSession(app: this, note: note);
+    _notify();
+  }
+
+  Future<void> closeSecondary() async {
+    final s = secondarySession;
+    if (s != null) {
+      await s.flush();
+      s.dispose();
+    }
+    secondarySession = null;
+    secondaryNote = null;
+    _notify();
+  }
+
+  Future<void> switchTab(String id) => openNote(id);
+
+  /// Alt+↑/↓ 在当前列表里换一篇，不抢编辑器焦点。
+  Future<void> openRelativeNote(int delta) async {
+    final list = visibleNotes;
+    if (list.isEmpty) return;
+    final currentId = current?.id;
+    final index = currentId == null
+        ? -1
+        : list.indexWhere((meta) => meta.id == currentId);
+    var next = index < 0
+        ? (delta > 0 ? 0 : list.length - 1)
+        : index + delta;
+    next = next.clamp(0, list.length - 1);
+    if (list[next].id == currentId) return;
+    await openNote(list[next].id, autofocus: false);
+  }
+
+  Future<void> switchToNextTab({bool backwards = false}) async {
+    if (openTabs.length < 2) return;
+    final currentId = current?.id;
+    final index = currentId == null ? -1 : openTabs.indexOf(currentId);
+    if (index < 0) {
+      await openNote(openTabs.first);
+      return;
+    }
+    final next = backwards
+        ? (index - 1 + openTabs.length) % openTabs.length
+        : (index + 1) % openTabs.length;
+    await openNote(openTabs[next]);
+  }
+
+  Future<void> closeTab(String id) async {
+    final index = openTabs.indexOf(id);
+    if (index < 0) return;
+    openTabs.removeAt(index);
+    if (current?.id != id) {
+      _notify();
+      return;
+    }
+    if (openTabs.isEmpty) {
+      await closeEditor();
+      return;
+    }
+    final next = openTabs[index.clamp(0, openTabs.length - 1)];
+    await openNote(next);
+  }
+
+  void _scheduleLibraryPersist() {
+    _libraryTimer?.cancel();
+    _libraryTimer = Timer(const Duration(milliseconds: 1200), () {
+      _libraryTimer = null;
+      unawaited(store.persistLibrary(notes));
+    });
+  }
+
+  Future<void> _flushLibrary() async {
+    _libraryTimer?.cancel();
+    _libraryTimer = null;
+    try {
+      await store.persistLibrary(notes);
+    } catch (_) {
+      // 索引写失败不该影响正文；下次保存或重建会补上。
+    }
   }
 
   Future<Note> createNote({
@@ -604,19 +1361,27 @@ class AppState extends ChangeNotifier {
             : kind == NoteKind.essay
                 ? noteTemplates.firstWhere((e) => e.id == 'essay')
                 : noteTemplates.firstWhere((e) => e.id == 'blank'));
+    final expandedDelta = _expandTemplateDelta(t.delta);
+    // 在文件夹里点「新建」时，笔记应该直接落在这个文件夹里。
+    final targetFolder = view == 'all' &&
+            folderFilter != null &&
+            folderFilter != '__unfiled__'
+        ? folderFilter
+        : null;
     final note = Note(
       id: _uuid.v4(),
-      title: title ?? t.title,
-      delta: t.delta,
+      title: title ?? _expandTemplateText(t.title),
+      delta: expandedDelta,
       text: '',
       kind: kind,
       tags: List.of(t.tags),
       createdAt: date,
       updatedAt: now,
       day: dayKey(date),
+      folderId: targetFolder,
     );
     final parts = <String>[];
-    for (final op in t.delta) {
+    for (final op in expandedDelta) {
       if (op is Map && op['insert'] is String) {
         final s = op['insert'] as String;
         if (s != '\n') parts.add(s);
@@ -626,6 +1391,7 @@ class AppState extends ChangeNotifier {
     note.words = countWords(note.text);
     await store.saveNote(note);
     notes.insert(0, note.toMeta());
+    _touchData();
     await store.persistLibrary(notes);
     await openNote(note.id, force: true);
     saveStatus = SaveStatus.saved;
@@ -634,6 +1400,133 @@ class AppState extends ChangeNotifier {
   }
 
   /// 从 Markdown / 纯文本导入一篇笔记。
+  String _templateWeekday(DateTime date) {
+  const zh = ['一', '二', '三', '四', '五', '六', '日'];
+  const en = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+  return I18n.isEn ? en[date.weekday - 1] : '星期${zh[date.weekday - 1]}';
+}
+
+String _expandTemplateText(String input) {
+  if (!input.contains('{{')) return input;
+  final now = DateTime.now();
+  final date = I18n.isEn
+      ? '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+          '${now.day.toString().padLeft(2, '0')}'
+      : '${now.year}年${now.month}月${now.day}日';
+  final time = '${now.hour.toString().padLeft(2, '0')}:'
+      '${now.minute.toString().padLeft(2, '0')}';
+  return input
+      .replaceAll('{{date}}', date)
+      .replaceAll('{{weekday}}', _templateWeekday(now))
+      .replaceAll('{{time}}', time);
+}
+
+List<dynamic> _expandTemplateDelta(List<dynamic> delta) {
+  return [
+    for (final op in delta)
+      if (op is Map && op['insert'] is String)
+        {
+          ...op.cast<dynamic, dynamic>(),
+          'insert': _expandTemplateText(op['insert'] as String),
+        }
+      else
+        op,
+  ];
+}
+
+Future<UserTemplate?> saveCurrentAsTemplate(String name) async {
+    final s = session;
+    if (s == null) return null;
+    await s.flush();
+    final template = UserTemplate(
+      id: 'user_${DateTime.now().microsecondsSinceEpoch}',
+      name: name.trim().isEmpty ? tr('我的模板') : name.trim(),
+      title: s.titleController.text.trim(),
+      delta: s.controller.document.toDelta().toJson(),
+      tags: List.of(s.note.tags),
+    );
+    userTemplates = [...userTemplates, template];
+    await store.saveTemplates(userTemplates);
+    _notify();
+    return template;
+  }
+
+  Future<void> deleteUserTemplate(String id) async {
+    userTemplates = userTemplates.where((t) => t.id != id).toList();
+    await store.saveTemplates(userTemplates);
+    _notify();
+  }
+
+  /// 今天已经写过日记就打开它，否则用日记模板新建一篇。
+  Future<void> openTodayDiary() async {
+    final today = dayKey(DateTime.now());
+    for (final meta in activeNotes) {
+      if (meta.day == today && meta.kind == NoteKind.diary) {
+        await openNote(meta.id);
+        return;
+      }
+    }
+    await createNote(kind: NoteKind.diary, day: DateTime.now());
+  }
+
+  /// 从 Word 文档导入一篇新笔记。
+  Future<Note?> importDocx(Uint8List bytes, String filename) async {
+    final result = await parseDocx(
+      bytes,
+      saveImage: (data, extension) => store.saveAsset(data, extension),
+    );
+    if (result == null) return null;
+    final now = DateTime.now();
+    final note = Note(
+      id: _uuid.v4(),
+      title: result.title.trim().isEmpty
+          ? _titleFromFilename(filename)
+          : result.title.trim(),
+      delta: result.delta,
+      text: result.text,
+      kind: NoteKind.note,
+      tags: const <String>[],
+      createdAt: now,
+      updatedAt: now,
+      day: dayKey(now),
+      words: countWords(result.text),
+    );
+    await store.saveNote(note);
+    notes.insert(0, note.toMeta());
+    _touchData();
+    await store.persistLibrary(notes);
+    await openNote(note.id, force: true);
+    return note;
+  }
+
+  /// 从系统分享接收一段文字/链接，落到一篇新笔记里。
+  Future<void> importSharedText(String text) async {
+    final shared = text.trim();
+    if (shared.isEmpty) return;
+    final first = shared.split('\n').first.trim();
+    final title = first.isEmpty
+        ? '来自分享'
+        : (first.length > 40 ? first.substring(0, 40) : first);
+    await createNote(title: title);
+    final s = session;
+    if (s == null) return;
+    s.controller.replaceText(
+      0,
+      0,
+      shared,
+      TextSelection.collapsed(offset: shared.length),
+    );
+    await s.flush();
+  }
+
   Future<Note> importMarkdown({
     required String content,
     required String filename,
@@ -686,6 +1579,9 @@ class AppState extends ChangeNotifier {
           );
           session?.insertImage(rel);
           images++;
+        } else if (ext == '.docx') {
+          final bytes = await File(path).readAsBytes();
+          if (await importDocx(bytes, p.basename(path)) != null) imported++;
         } else if (const ['.md', '.markdown', '.txt'].contains(ext)) {
           final content = await File(path).readAsString();
           await importMarkdown(
@@ -704,8 +1600,27 @@ class AppState extends ChangeNotifier {
   Future<void> updateMeta(NoteMeta meta) async {
     final i = notes.indexWhere((e) => e.id == meta.id);
     if (i >= 0) notes[i] = meta;
+    _syncOpenMeta(meta);
+    _touchData();
     await store.persistLibrary(notes);
     _notify();
+  }
+
+  /// 编辑会话里的 Note 是另一份对象；列表里改的元数据要同步过去，
+  /// 否则下一次自动保存会用旧的 pinned / fixed / folderId 覆盖回来。
+  void _syncOpenMeta(NoteMeta meta) {
+    void sync(Note? note) {
+      if (note == null || note.id != meta.id) return;
+      note
+        ..pinned = meta.pinned
+        ..fixed = meta.fixed
+        ..favorite = meta.favorite
+        ..folderId = meta.folderId
+        ..sortOrder = meta.sortOrder;
+    }
+
+    sync(current);
+    sync(secondaryNote);
   }
 
   Future<void> togglePin(NoteMeta meta) async {
@@ -716,6 +1631,185 @@ class AppState extends ChangeNotifier {
   Future<void> toggleFavorite(NoteMeta meta) async {
     meta.favorite = !meta.favorite;
     await updateMeta(meta);
+  }
+
+  /// 固定后记录当前位置；之后「最近 / 创建 / 字数」重排都不会把它挤走。
+  Future<void> toggleFixed(NoteMeta meta) async {
+    if (!meta.fixed) {
+      final index = visibleNotes.indexWhere((n) => n.id == meta.id);
+      if (index >= 0) meta.sortOrder = index * 10;
+      meta.fixed = true;
+    } else {
+      meta.fixed = false;
+    }
+    await updateMeta(meta);
+  }
+
+  Future<void> setPinnedMany(Iterable<String> ids, bool value) async {
+    final idSet = ids.toSet();
+    for (final note in notes) {
+      if (idSet.contains(note.id)) {
+        note.pinned = value;
+        _syncOpenMeta(note);
+      }
+    }
+    _touchData();
+    await store.persistLibrary(notes);
+    _notify();
+  }
+
+  /// 笔记和文件夹的批量置顶 / 固定：先改完内存再一起落盘，
+  /// 界面立刻拿到新状态，也让两类条目在同一帧里更新。
+  Future<void> setPinnedFor(
+    Iterable<String> noteIds,
+    Iterable<String> folderIds,
+    bool value,
+  ) async {
+    final noteSet = noteIds.toSet();
+    final folderSet = folderIds.toSet();
+    for (final note in notes) {
+      if (noteSet.contains(note.id)) {
+        note.pinned = value;
+        _syncOpenMeta(note);
+      }
+    }
+    for (final folder in folders) {
+      if (folderSet.contains(folder.id)) folder.pinned = value;
+    }
+    _touchData();
+    _touchFolders();
+    _notify();
+    await store.persistLibrary(notes);
+    await store.persistFolders(folders);
+  }
+
+  Future<void> setFixedFor(
+    Iterable<String> noteIds,
+    Iterable<String> folderIds,
+    bool value,
+  ) async {
+    final noteSet = noteIds.toSet();
+    final folderSet = folderIds.toSet();
+    if (value) {
+      final positions = <String, int>{};
+      final visible = visibleNotes;
+      for (var i = 0; i < visible.length; i++) {
+        positions[visible[i].id] = i;
+      }
+      for (final note in notes) {
+        if (!noteSet.contains(note.id)) continue;
+        final index = positions[note.id];
+        if (index != null) note.sortOrder = index * 10;
+        note.fixed = true;
+        _syncOpenMeta(note);
+      }
+    } else {
+      for (final note in notes) {
+        if (noteSet.contains(note.id)) {
+          note.fixed = false;
+          _syncOpenMeta(note);
+        }
+      }
+    }
+    for (final folder in folders) {
+      if (folderSet.contains(folder.id)) folder.fixed = value;
+    }
+    _touchData();
+    _touchFolders();
+    _notify();
+    await store.persistLibrary(notes);
+    await store.persistFolders(folders);
+  }
+
+  Future<void> setFavoriteMany(Iterable<String> ids, bool value) async {
+    final idSet = ids.toSet();
+    for (final note in notes) {
+      if (idSet.contains(note.id)) {
+        note.favorite = value;
+        _syncOpenMeta(note);
+      }
+    }
+    _touchData();
+    await store.persistLibrary(notes);
+    _notify();
+  }
+
+  Future<void> setFixedMany(Iterable<String> ids, bool value) async {
+    final idSet = ids.toSet();
+    if (value) {
+      final positions = <String, int>{};
+      final visible = visibleNotes;
+      for (var i = 0; i < visible.length; i++) {
+        positions[visible[i].id] = i;
+      }
+      for (final note in notes) {
+        if (!idSet.contains(note.id)) continue;
+        final index = positions[note.id];
+        if (index != null) note.sortOrder = index * 10;
+        note.fixed = true;
+        _syncOpenMeta(note);
+      }
+    } else {
+      for (final note in notes) {
+        if (idSet.contains(note.id)) {
+          note.fixed = false;
+          _syncOpenMeta(note);
+        }
+      }
+    }
+    _touchData();
+    await store.persistLibrary(notes);
+    _notify();
+  }
+
+  Future<void> trashMany(Iterable<String> ids) async {
+    final idSet = ids.toSet();
+    final now = DateTime.now();
+    var closedCurrent = false;
+    for (final note in notes) {
+      if (!idSet.contains(note.id) || note.deletedAt != null) continue;
+      note.deletedAt = now;
+      if (current?.id == note.id) {
+        session?.note.deletedAt = now;
+        openTabs.remove(note.id);
+        closedCurrent = true;
+      }
+      if (secondaryNote?.id == note.id) {
+        secondarySession?.note.deletedAt = now;
+      }
+    }
+    _touchData();
+    await store.persistLibrary(notes);
+    if (closedCurrent) await closeEditor();
+    _notify();
+  }
+
+  Future<void> moveNotesToFolder(
+    Iterable<String> ids,
+    String? folderId,
+  ) async {
+    final idSet = ids.toSet();
+    var nextOrder = 0;
+    if (sort == 'manual') {
+      final siblings = notes
+          .where((n) =>
+              n.folderId == folderId && !n.isTrashed && !idSet.contains(n.id))
+          .toList();
+      siblings.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      nextOrder = siblings.isEmpty ? 10 : siblings.last.sortOrder + 10;
+    }
+    for (final note in notes) {
+      if (!idSet.contains(note.id)) continue;
+      note.folderId = folderId;
+      if (sort == 'manual') {
+        note.sortOrder = nextOrder;
+        nextOrder += 10;
+      }
+      _syncOpenMeta(note);
+    }
+    _touchData();
+    await store.persistLibrary(notes);
+    _notify();
   }
 
   /// 复制一份，插到列表最前面。返回副本，源笔记不存在时返回 null。
@@ -740,8 +1834,14 @@ class AppState extends ChangeNotifier {
     final i = notes.indexWhere((e) => e.id == id);
     if (i < 0) return;
     notes[i].deletedAt = DateTime.now();
+    _touchData();
     await store.persistLibrary(notes);
-    if (current?.id == id) await closeEditor();
+    if (current?.id == id) {
+      session?.note.deletedAt = notes[i].deletedAt;
+      openTabs.remove(id);
+      await closeEditor();
+      if (openTabs.isNotEmpty) await openNote(openTabs.last);
+    }
     _notify();
   }
 
@@ -749,24 +1849,52 @@ class AppState extends ChangeNotifier {
     final i = notes.indexWhere((e) => e.id == id);
     if (i < 0) return;
     notes[i].deletedAt = null;
+    _touchData();
     await store.persistLibrary(notes);
     _notify();
   }
 
   Future<void> purgeNote(String id) async {
+    openTabs.remove(id);
+    if (current?.id == id) {
+      // 永久删除时不能再 flush，否则刚删掉的 note 文件会被写回来。
+      final s = session;
+      session = null;
+      current = null;
+      saveStatus = SaveStatus.idle;
+      s?.dispose();
+    }
     notes.removeWhere((e) => e.id == id);
+    _indexTexts.remove(id);
+    _touchData();
     await store.deleteNoteFile(id);
     await store.persistLibrary(notes);
-    if (current?.id == id) await closeEditor();
+    if (session == null && openTabs.isNotEmpty) {
+      await openNote(openTabs.last);
+    }
     _notify();
   }
 
   Future<void> emptyTrash() async {
+    final ids = trashedNotes.map((note) => note.id).toSet();
+    openTabs.removeWhere(ids.contains);
+    if (current != null && ids.contains(current!.id)) {
+      final s = session;
+      session = null;
+      current = null;
+      saveStatus = SaveStatus.idle;
+      s?.dispose();
+    }
     for (final n in trashedNotes) {
       await store.deleteNoteFile(n.id);
+      _indexTexts.remove(n.id);
     }
     notes.removeWhere((n) => n.isTrashed);
+    _touchData();
     await store.persistLibrary(notes);
+    if (session == null && openTabs.isNotEmpty) {
+      await openNote(openTabs.last);
+    }
     _notify();
   }
 
@@ -776,6 +1904,7 @@ class AppState extends ChangeNotifier {
     _notify();
     try {
       await store.saveNote(note);
+      await store.deleteJournal(note.id);
       if (snapshot) await store.saveSnapshot(note);
       final meta = note.toMeta();
       final i = notes.indexWhere((e) => e.id == note.id);
@@ -784,7 +1913,10 @@ class AppState extends ChangeNotifier {
       } else {
         notes.insert(0, meta);
       }
-      await store.persistLibrary(notes);
+      _indexTexts[note.id] = note.text;
+      _touchData();
+      // note 文件与全文索引已经落盘；library 索引晚一点写，避免每 900ms 重写整份。
+      _scheduleLibraryPersist();
       saveStatus = SaveStatus.saved;
       lastSaveError = null;
     } catch (e) {
@@ -800,6 +1932,7 @@ class AppState extends ChangeNotifier {
     final before = activity.wordsOn(day);
     activity.touch(day, noteId, words);
     if (activity.wordsOn(day) == before) return;
+    _touchData();
     _activityTimer?.cancel();
     _activityTimer = Timer(const Duration(seconds: 2), persistActivity);
     _notify();
@@ -818,19 +1951,87 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
+  Future<void> insertNoteLink(EditorSession session, NoteMeta target) async {
+    final controller = session.controller;
+    final selection = controller.selection;
+    if (!selection.isValid) return;
+    final start = selection.start;
+    final title = target.title.trim().isEmpty ? tr('无题') : target.title.trim();
+    final label = '[[$title]]';
+    controller.replaceText(
+      start,
+      selection.end - start,
+      label,
+      TextSelection.collapsed(offset: start + label.length),
+    );
+    controller.formatText(
+      start,
+      label.length,
+      LinkAttribute('thisnote://${target.id}'),
+    );
+    await session.flush();
+  }
+
+  String _liveTextOf(NoteMeta meta) => noteText(meta.id);
+
+  /// 明确写了 [[标题]] 的笔记。
+  List<NoteMeta> inboundLinksFor(NoteMeta target) {
+    final title = target.title.trim();
+    if (title.isEmpty) return const [];
+    final needle = '[[$title]]'.toLowerCase();
+    return activeNotes
+        .where((meta) =>
+            meta.id != target.id &&
+            _liveTextOf(meta).toLowerCase().contains(needle))
+        .toList();
+  }
+
+  /// 当前笔记里 [[...]] 指向的笔记。
+  List<NoteMeta> outgoingLinksFor(NoteMeta source) {
+    final text = _liveTextOf(source);
+    final titles = RegExp(r'\[\[([^\]\n]{1,80})\]\]')
+        .allMatches(text)
+        .map((m) => m.group(1)!.trim().toLowerCase())
+        .where((t) => t.isNotEmpty)
+        .toSet();
+    if (titles.isEmpty) return const [];
+    return activeNotes
+        .where((meta) =>
+            meta.id != source.id &&
+            titles.contains(meta.title.trim().toLowerCase()))
+        .toList();
+  }
+
+  Future<void> setNoteGoal(int words) async {
+    final s = session;
+    if (s == null) return;
+    s.note.goalWords = words.clamp(0, 100000);
+    s.dirty = true;
+    await s.flush();
+    _notify();
+  }
+
   Future<void> saveNow() async {
     await session?.flush();
+    await _flushLibrary();
     await persistActivity();
     _notify();
   }
 
   Future<void> reload() async {
+    await closeSecondary();
     await closeEditor();
+    openTabs.clear();
     settings = await store.loadSettings();
+    await _loadSecrets();
     I18n.lang = AppLang.fromCode(settings.language);
     await _loadCustomFonts();
     notes = await store.loadLibrary();
     folders = await store.loadFolders();
+    await _prepareIndex();
+    await _prepareRecovery();
+    _touchData();
+    _settingsRevision++;
     query = '';
     tagFilter = null;
     folderFilter = null;
@@ -856,9 +2057,28 @@ class AppState extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   Future<void> updateSettings(void Function(AppSettings s) mutate) async {
+    _settingsTimer?.cancel();
     mutate(settings);
-    await store.saveSettings(settings);
+    _settingsRevision++;
+    await _persistSettings();
     _notify();
+  }
+
+  /// 滑块拖动时只更新内存，松手后再落盘。
+  void previewSettings(void Function(AppSettings s) mutate) {
+    mutate(settings);
+    _settingsRevision++;
+    _notify();
+    _settingsTimer?.cancel();
+    _settingsTimer = Timer(const Duration(milliseconds: 500), () {
+      unawaited(_persistSettings());
+    });
+  }
+
+  Future<void> persistSettingsNow() async {
+    _settingsTimer?.cancel();
+    _settingsTimer = null;
+    await _persistSettings();
   }
 
   /// 把用户导入过的字体重新注册进字体引擎。放在启动和恢复备份之后调用，
@@ -1023,10 +2243,28 @@ class EditorSession extends ChangeNotifier {
       selection: const TextSelection.collapsed(offset: 0),
     );
     titleController = TextEditingController(text: note.title);
-    controller.addListener(_onEditorChanged);
+    final cursor = note.cursorOffset.clamp(0, controller.document.length);
+    if (cursor > 0) {
+      controller.updateSelection(
+        TextSelection.collapsed(offset: cursor),
+        ChangeSource.local,
+      );
+    }
+    _changesSub = controller.changes.listen(_onDocChanged);
+    controller.addListener(_onControllerChanged);
     titleController.addListener(_onTitleChanged);
-    _lastDelta = jsonEncode(controller.document.toDelta().toJson());
+    _lastSelection = controller.selection;
+    _lastDocLength = controller.document.length;
     _lastTitle = titleController.text;
+    styleCheckOpen = app.settings.styleCheck;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!scrollController.hasClients || note.scrollOffset <= 0) return;
+      final target = note.scrollOffset.clamp(
+        0.0,
+        scrollController.position.maxScrollExtent,
+      );
+      if (target > 0) scrollController.jumpTo(target);
+    });
     // 旧笔记没有记录过写作时长：用创建到最近修改的跨度做一个保守估计，
     // 只接受一分钟到十二小时之间，太久远的笔记宁可不猜。
     _writingMs = note.writingSeconds * 1000;
@@ -1050,6 +2288,17 @@ class EditorSession extends ChangeNotifier {
     _snapshotTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       if (dirty) flush(snapshot: true);
     });
+    _journalTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!dirty) return;
+      final entry = JournalEntry(
+        id: note.id,
+        title: titleController.text,
+        delta: controller.document.toDelta().toJson(),
+        text: plainText,
+        savedAt: DateTime.now(),
+      );
+      unawaited(app.store.saveJournal(note.id, entry.toJson()));
+    });
   }
 
   final AppState app;
@@ -1059,6 +2308,7 @@ class EditorSession extends ChangeNotifier {
   final FocusNode editorFocus = FocusNode();
   final FocusNode titleFocus = FocusNode();
   final ScrollController scrollController = ScrollController();
+  final GlobalKey<EditorState> editorKey = GlobalKey<EditorState>();
 
   late final AiChatController aiChat;
   bool aiOpen = false;
@@ -1071,7 +2321,10 @@ class EditorSession extends ChangeNotifier {
 
   Timer? _debounce;
   Timer? _snapshotTimer;
-  String _lastDelta = '';
+  Timer? _journalTimer;
+  StreamSubscription<dynamic>? _changesSub;
+  TextSelection _lastSelection = const TextSelection.collapsed(offset: 0);
+  int _lastDocLength = -1;
   String _lastTitle = '';
   bool dirty = false;
   DateTime? lastSaved;
@@ -1082,6 +2335,41 @@ class EditorSession extends ChangeNotifier {
   DateTime _lastEditAt = DateTime.now();
 
   int get writingSeconds => _writingMs ~/ 1000;
+
+  DateTime? _sprintEnd;
+  int _sprintStartWords = 0;
+  Timer? _sprintTimer;
+
+  bool get sprintActive => _sprintEnd != null;
+  int get sprintWords => words - _sprintStartWords;
+  int get sprintRemainingSeconds {
+    final end = _sprintEnd;
+    if (end == null) return 0;
+    final value = end.difference(DateTime.now()).inSeconds;
+    return value < 0 ? 0 : value;
+  }
+
+  void startSprint(int minutes) {
+    stopSprint();
+    _sprintStartWords = words;
+    _sprintEnd = DateTime.now().add(Duration(minutes: minutes));
+    _sprintTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_sprintEnd == null) return;
+      if (sprintRemainingSeconds <= 0) {
+        stopSprint();
+      } else {
+        notifyListeners();
+      }
+    });
+    notifyListeners();
+  }
+
+  void stopSprint() {
+    _sprintTimer?.cancel();
+    _sprintTimer = null;
+    _sprintEnd = null;
+    notifyListeners();
+  }
 
   void _accumulateWriting() {
     final now = DateTime.now();
@@ -1275,10 +2563,36 @@ class EditorSession extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   bool outlineOpen = false;
+  bool styleCheckOpen = false;
+  bool backlinksOpen = false;
 
   void toggleOutline() {
     outlineOpen = !outlineOpen;
-    if (outlineOpen) findOpen = false;
+    if (outlineOpen) {
+      findOpen = false;
+      styleCheckOpen = false;
+      backlinksOpen = false;
+    }
+    notifyListeners();
+  }
+
+  void toggleStyleCheck() {
+    styleCheckOpen = !styleCheckOpen;
+    if (styleCheckOpen) {
+      findOpen = false;
+      outlineOpen = false;
+      backlinksOpen = false;
+    }
+    notifyListeners();
+  }
+
+  void toggleBacklinks() {
+    backlinksOpen = !backlinksOpen;
+    if (backlinksOpen) {
+      findOpen = false;
+      outlineOpen = false;
+      styleCheckOpen = false;
+    }
     notifyListeners();
   }
 
@@ -1299,6 +2613,29 @@ class EditorSession extends ChangeNotifier {
 
   /// 标题是块级属性，规范位置在段尾的换行上。
   /// 早期模板把 header 写在了文字本身，这里兼容一下，老笔记也能进目录。
+  Future<void> insertTableOfContents() async {
+    final entries = outline;
+    if (entries.isEmpty) return;
+    final buffer = StringBuffer();
+    for (final entry in entries) {
+      buffer
+        ..write('  ' * (entry.level - 1))
+        ..writeln('· ${entry.text}');
+    }
+    buffer.writeln();
+    final text = buffer.toString();
+    final selection = controller.selection;
+    if (!selection.isValid) return;
+    final offset = selection.start;
+    controller.replaceText(
+      offset,
+      selection.end - offset,
+      text,
+      TextSelection.collapsed(offset: offset + text.length),
+    );
+    await flush();
+  }
+
   int? _headerLevel(Line line) {
     final own = line.style.attributes[Attribute.header.key]?.value;
     if (own is int) return own;
@@ -1416,17 +2753,36 @@ class EditorSession extends ChangeNotifier {
     return _plainCache;
   }
 
-  void _onEditorChanged() {
-    final now = jsonEncode(controller.document.toDelta().toJson());
-    if (now != _lastDelta) {
+  /// 文档变化只做增量标记：不再为每次按键编码整篇 Delta。
+  void _onDocChanged(dynamic change) {
+    _accumulateWriting();
+    _findCacheKey = '';
+    _revision++;
+    dirty = true;
+    notifyListeners();
+    scheduleSave();
+  }
+
+  /// 文档长度变化同步处理，保证输入后立刻能读到时序/字数；
+  /// 纯格式变化由异步 changes 流补上。
+  void _onControllerChanged() {
+    var changed = false;
+    final selection = controller.selection;
+    if (selection != _lastSelection) {
+      _lastSelection = selection;
+      changed = true;
+    }
+    final length = controller.document.length;
+    if (length != _lastDocLength) {
+      _lastDocLength = length;
       _accumulateWriting();
-      _lastDelta = now;
-      _findCacheKey = '';
       _revision++;
+      _findCacheKey = '';
       dirty = true;
-      notifyListeners();
+      changed = true;
       scheduleSave();
     }
+    if (changed) notifyListeners();
   }
 
   void _onTitleChanged() {
@@ -1453,6 +2809,10 @@ class EditorSession extends ChangeNotifier {
     if (!dirty && !snapshot) return;
     final text = plainText;
     note.title = titleController.text.trim();
+    note.cursorOffset = controller.selection.extentOffset;
+    note.scrollOffset = scrollController.hasClients
+        ? scrollController.offset
+        : note.scrollOffset;
     note.delta = controller.document.toDelta().toJson();
     note.text = text;
     note.words = countWords(text);
@@ -1593,8 +2953,11 @@ class EditorSession extends ChangeNotifier {
   void dispose() {
     _debounce?.cancel();
     _snapshotTimer?.cancel();
+    _journalTimer?.cancel();
+    _sprintTimer?.cancel();
+    _changesSub?.cancel();
     aiChat.dispose();
-    controller.removeListener(_onEditorChanged);
+    controller.removeListener(_onControllerChanged);
     titleController.removeListener(_onTitleChanged);
     controller.dispose();
     titleController.dispose();

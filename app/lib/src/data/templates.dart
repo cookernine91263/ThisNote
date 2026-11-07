@@ -22,6 +22,52 @@ class NoteTemplate {
   final String title;
 }
 
+/// 用户自己存下来的模板。只在这台设备上，随备份一起走。
+class UserTemplate {
+  const UserTemplate({
+    required this.id,
+    required this.name,
+    required this.title,
+    required this.delta,
+    this.tags = const [],
+  });
+
+  final String id;
+  final String name;
+  final String title;
+  final List<dynamic> delta;
+  final List<String> tags;
+
+  NoteTemplate toNoteTemplate() => NoteTemplate(
+        id: id,
+        name: name,
+        description: '我的模板',
+        kind: NoteKind.note,
+        delta: delta,
+        tags: tags,
+        title: title,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'title': title,
+        'delta': delta,
+        'tags': tags,
+      };
+
+  factory UserTemplate.fromJson(Map<String, dynamic> json) => UserTemplate(
+        id: (json['id'] as String?) ?? '',
+        name: (json['name'] as String?) ?? '',
+        title: (json['title'] as String?) ?? '',
+        delta: (json['delta'] as List?) ?? const [],
+        tags: (json['tags'] as List?)?.map((e) => e.toString()).toList() ??
+            const [],
+      );
+
+  bool get valid => id.isNotEmpty && name.isNotEmpty;
+}
+
 Map<String, dynamic> _text(String s, [Map<String, dynamic>? attrs]) => {
       'insert': s,
       if (attrs != null && attrs.isNotEmpty) 'attributes': attrs,

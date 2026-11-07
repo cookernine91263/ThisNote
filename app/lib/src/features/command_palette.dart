@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../core/i18n.dart';
+import '../core/format.dart';
 import '../core/icons.dart';
 import '../core/motion.dart';
 import '../core/theme.dart';
@@ -14,6 +15,8 @@ import '../data/models.dart';
 import '../state/app_state.dart';
 import 'editor/code_block.dart';
 import 'export_sheet.dart';
+import 'global_replace_dialog.dart';
+import 'shortcut_sheet.dart';
 
 /// 文案以中文为源，英文放在 [_en] 里。
 const Map<String, String> _en = <String, String>{
@@ -48,6 +51,14 @@ const Map<String, String> _en = <String, String>{
   '查找': 'Find',
   '目录': 'Outline',
   '整理排版': 'Tidy formatting',
+  '全局搜索替换': 'Search & replace everywhere',
+  '在所有笔记中查找并替换': 'Find and replace across every note',
+  '键盘快捷键': 'Keyboard shortcuts',
+  '所有 Ctrl / ⌘ 组合键': 'Every Ctrl / ⌘ combination',
+  '今天写日记': "Today's diary",
+  '今天写过就打开，没写就新建':
+      'Open today’s diary, or start one if it is empty',
+  '正文': 'Body',
   '导出当前笔记…': 'Export current note…',
   '加粗': 'Bold',
   '倾斜': 'Italic',
@@ -113,8 +124,15 @@ Future<void> showCommandPalette(BuildContext context) async {
     },
   );
   if (request == null || !context.mounted) return;
-  // 已经是这个外观了：不演那段看不见的扩散，也不挡输入。
-  if (context.read<AppState>().settings.themeMode == request.mode) return;
+  final state = context.read<AppState>();
+  // 已经是这个外观，或实际明暗没变（系统深色下切墨夜）：
+  // 不演那段看不见的扩散，也不挡输入；模式仍要写进设置。
+  if (state.settings.themeMode == request.mode ||
+      brightnessOfMode(context, request.mode) ==
+          Theme.of(context).brightness) {
+    await state.setThemeMode(request.mode);
+    return;
+  }
   await WidgetsBinding.instance.endOfFrame;
   if (!context.mounted) return;
   await ThemeReveal.reveal(
@@ -198,6 +216,13 @@ class _CommandDialogState extends State<_CommandDialog> {
         action: () => state.createNote(kind: NoteKind.diary),
       ),
       _Command(
+        icon: LucideIcons.sun,
+        label: _t('今天写日记'),
+        group: _t('新建'),
+        hint: _t('今天写过就打开，没写就新建'),
+        action: state.openTodayDiary,
+      ),
+      _Command(
         icon: LucideIcons.penLine,
         label: _t('新建随笔'),
         group: _t('新建'),
@@ -254,6 +279,13 @@ class _CommandDialogState extends State<_CommandDialog> {
         action: () => state.setView('stats'),
       ),
       _Command(
+        icon: LucideIcons.keyboard,
+        label: _t('键盘快捷键'),
+        group: _t('前往'),
+        hint: _t('所有 Ctrl / ⌘ 组合键'),
+        action: () => showShortcutSheet(widget.hostContext),
+      ),
+      _Command(
         icon: LucideIcons.settings,
         label: _t('设置'),
         group: _t('前往'),
@@ -269,6 +301,14 @@ class _CommandDialogState extends State<_CommandDialog> {
           hint: _t('当前笔记内查找与替换'),
           shortcut: 'Ctrl F',
           action: session.openFind,
+        ),
+        _Command(
+          icon: LucideIcons.search,
+          label: _t('全局搜索替换'),
+          group: _t('编辑'),
+          hint: _t('在所有笔记中查找并替换'),
+          shortcut: 'Ctrl Shift H',
+          action: () => showGlobalReplaceDialog(widget.hostContext),
         ),
         _Command(
           icon: LucideIcons.listTree,
@@ -468,11 +508,31 @@ class _CommandDialogState extends State<_CommandDialog> {
         return notes <= 6;
       }).toList();
     }
-    return _commands.where((c) {
+    final matches = _commands.where((c) {
       return c.label.toLowerCase().contains(q) ||
           c.group.toLowerCase().contains(q) ||
           (c.hint?.toLowerCase().contains(q) ?? false);
     }).toList();
+    if (q.length < 2) return matches;
+    final state = context.read<AppState>();
+    final body = state.activeNotes
+        .where((note) => state.noteText(note.id).toLowerCase().contains(q))
+        .take(8)
+        .map(
+          (note) => _Command(
+            icon: kindIcon(note.kind),
+            label: '${_t('正文')}：'
+                '${note.title.trim().isEmpty ? _t('无题') : note.title.trim()}',
+            group: _t('搜索'),
+            hint: searchSnippet(
+                  state.noteText(note.id),
+                  _controller.text.trim(),
+                ) ??
+                note.excerpt,
+            action: () => state.openNote(note.id),
+          ),
+        );
+    return [...matches, ...body];
   }
 
   /// 每行一个 key，用来取被选中那一行的位置——圆孔从那里扩散。

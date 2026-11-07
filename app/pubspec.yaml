@@ -1,7 +1,7 @@
 name: this_note
 description: "此记 · ThisNote — 安静而强大的本地优先写作空间"
 publish_to: 'none'
-version: 1.3.1+6
+version: 2.0.0+7
 
 environment:
   sdk: ^3.13.0
@@ -21,7 +21,6 @@ dependencies:
   path: ^1.9.1
   uuid: ^4.6.0
   crypto: ^3.0.8
-  collection: ^1.19.1
   intl: any
 
   # desktop shell
@@ -38,21 +37,28 @@ dependencies:
 
   # design
   lucide_icons_flutter: ^4.0.1
-  flutter_animate: ^4.5.2
 
   # code blocks
   highlight: ^0.7.0
+  flutter_secure_storage: ^11.2.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
 
+# The upstream package force-bundles six unused variable-weight fonts.
+dependency_overrides:
+  lucide_icons_flutter:
+    path: packages/lucide_icons_flutter
+  # 上游 Windows 实现依赖 ATL；本地副本用 Win32 转换替代，普通 Build Tools 可编译。
+  flutter_secure_storage_windows:
+    path: packages/flutter_secure_storage_windows
+
 flutter:
   uses-material-design: true
   assets:
     - assets/fonts/
-    - assets/brand/
   fonts:
     - family: NotoSansSC
       fonts:

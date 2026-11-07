@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:ui' show Tristate;
 
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:this_note/src/app.dart';
@@ -113,6 +115,26 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(state.view, 'trash');
     expect(tester.takeException(), isNull);
+
+    // 连续快速点击：动画从当前形状接续，最终只认最后一次选择。
+    await tester.tap(find.descendant(of: nav, matching: find.text('日历')));
+    await tester.pump(const Duration(milliseconds: 40));
+    await tester.tap(find.descendant(of: nav, matching: find.text('我的')));
+    await tester.pump(const Duration(milliseconds: 40));
+    await tester.tap(find.descendant(of: nav, matching: find.text('统计')));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(state.view, 'stats');
+    expect(tester.takeException(), isNull);
+
+    final statSemantics = tester.getSemantics(
+      find.descendant(
+        of: nav,
+        matching: find.byWidgetPredicate(
+          (w) => w is Semantics && w.properties.label == '统计',
+        ),
+      ),
+    );
+    expect(statSemantics.flagsCollection.isSelected, Tristate.isTrue);
 
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 250)),

@@ -20,6 +20,24 @@ The interface can be switched between **中文 and English** at any time — on 
 
 ## Features
 
+### New in 2.0
+
+- **Typewriter mode / paragraph focus**: the caret stays in the middle, and only the paragraph you are writing stays clear.
+- **Offline Chinese style check**: filler words, repetition, long sentences, punctuation and spacing, each clickable.
+- **Global search & replace** (Ctrl/⌘ + Shift + H) with a snapshot for every changed note.
+- **Note links and backlinks**: insert `[[Title]]` from More and the two notes stay connected.
+- **Favorites, full tag list, per-note goals, writing time and version diffs.**
+- **Desktop tabs and split view**: Ctrl/⌘ + Tab to switch, Ctrl/⌘ + W to close; write two notes side by side.
+- **Table blocks**: insert from the toolbar, edit cells as tab-separated text, and keep tables in DOCX / PDF / HTML / Markdown.
+- **Templates and daily diary**: save the current note as a template with `{{date}}` / `{{weekday}}`, or open today's diary from the command palette.
+- **Interoperability**: EPUB export, DOCX import, and print through the system PDF reader.
+- **Mobile gestures and share**: swipe left to trash with undo, right to favorite; send text or links from other Android apps into a new note.
+- **Safer storage**: the AI API key and WebDAV password live in the OS keystore; `library.json` keeps only metadata and excerpts, with full text in a separate index.
+- **Crash recovery**: a draft newer than the file on disk is offered for recovery on the next launch.
+- **Sprints and contents**: a 25-minute writing sprint, and a one-click table of contents from the outline.
+- **Much smaller installs**: fonts are subset to the common Chinese charset (Windows installer 53 → 24 MB, APK 79.5 → 38 MB); rare glyphs fall back to the system font, and you can still import a full font.
+- **Faster start and save**: the paper appears first; typing no longer encodes the whole document on every keystroke; PDF fonts load on demand.
+
 ### Writing
 
 - Word-style rich text: bold / italic / light / underline / strikethrough / headings 1–3 / quote / code block / numbered, bulleted and to-do lists / alignment / indent / text color / highlight / links / images / dividers
@@ -32,14 +50,14 @@ The interface can be switched between **中文 and English** at any time — on 
 - Click any image to set its width (25/50/75/100%), align left/center/right, replace or delete it; PDF / Word exports keep the width and alignment
 - **Paste a screenshot directly**: when the clipboard holds only an image, use “Paste image” in the toolbar (some IMEs swallow Ctrl/⌘ + V, so there is an explicit button too)
 - **Drag & drop**: drop images into the window to insert them; drop `.md` / `.txt` files to import them as notes
-- Eight bundled open-source fonts: Noto Sans SC, Noto Serif SC, LXGW WenKai, Ma Shan Zheng, ZCOOL XiaoWei, Noto Sans SC Light, Smiley Sans and Source Han Mono; switch and preview them from the toolbar
+- Eight bundled open-source fonts: Noto Sans SC, Noto Serif SC, LXGW WenKai, Ma Shan Zheng, ZCOOL XiaoWei, Noto Sans SC Light, Smiley Sans and Source Han Mono; they are subset to the common Chinese charset, and rare glyphs fall back to the system CJK font
 - **Import your own fonts**: pick a TTF / OTF from this machine; it is copied into the data folder and still there after a restart (this device only)
 - **Writing time**: counted from actual typing, pauses longer than a minute are skipped; older notes get a conservative estimate from creation to last edit
 - **Custom color wheel**: hue/lightness wheel, built-in swatches and saved colors; both text color and highlight color are yours to pick
 - Auto-save, a version snapshot every five minutes (up to 40), undo / redo
 - Focus mode, paper grain, dark mode, and adjustable UI scale / body size / line height / paragraph spacing / letter spacing / page width / accent color
 - Light/dark switching expands as a circle from the point you clicked, without scaling the text
-- Nested folders with drag-to-sort; long-press a note card to drag it into a folder or reorder notes from the same day
+- Folders share the note list as cards: drop a note on the middle of a folder card to file it, on the top/bottom edge to reorder; drag near an edge to auto-scroll; multi-select and "fix in place"
 - Deleting a note collapses its card and offers an “Undo” at the bottom for five seconds
 - Command palette (Ctrl/⌘ + K): search any note, run formatting commands, find / outline / tidy typography / export
 
@@ -49,7 +67,7 @@ The interface can be switched between **中文 and English** at any time — on 
 - Calendar view: month grid, writing heatmap, mood dots, “On this day”
 - Mood (5) and weather (6) records
 - Tags (with autocomplete from tags you have used), pin, favorite, trash (restore / delete forever)
-- Folder tree (nested), drag notes between folders, manual ordering within a day
+- Folder cards (nested) in the same list, drag to file or reorder, a Timeline view, multi-select batch actions, and fixed notes that ignore sorting
 - A daily goal and a writing streak
 
 ### Stats
@@ -124,11 +142,11 @@ Say hi in the comments — I will answer.
 
 Already built in this environment:
 
-- `dist/ThisNote-Setup-1.3.1.exe` (Windows x64 installer)
-- `dist/ThisNote-Android-1.3.1-arm64.apk` (Android 8.0+ arm64, signed)
+- `dist/ThisNote-Setup-2.0.0.exe` (Windows x64 installer, about 24 MB)
+- `dist/ThisNote-Android-2.0.0-arm64.apk` (Android 8.0+ arm64, signed, about 38 MB)
 - `dist/SHA256SUMS.txt`
 
-See `dist/安装说明.txt` for installation notes.
+See `dist/安装说明.txt` for installation notes and `dist/release-2.0.0.md` for changes.
 
 ## Tech stack
 
@@ -177,7 +195,7 @@ tools/                           font prep, icon generation, screenshots
 ```powershell
 cd app
 flutter pub get
-flutter build windows --release
+flutter build windows --release --split-debug-info=build/symbols/windows
 # output: build/windows/x64/runner/Release/this_note.exe
 ```
 
@@ -185,7 +203,7 @@ Installer:
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" ..\installer\ThisNote.iss
-# output: dist/ThisNote-Setup-1.3.1.exe
+# output: dist/ThisNote-Setup-2.0.0.exe
 ```
 
 ### Android
@@ -201,7 +219,8 @@ storeFile=thisnote-release.jks
 
 ```powershell
 cd app
-flutter build apk --release --target-platform android-arm64
+flutter build apk --release --target-platform android-arm64 `
+  --split-debug-info=build/symbols/android --obfuscate
 # output: build/app/outputs/flutter-apk/app-release.apk (arm64)
 ```
 

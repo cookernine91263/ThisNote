@@ -164,12 +164,26 @@ bool isHuaziStyle(Map<String, Attribute> attrs) {
   return size == 'huge' || size == 'large' || (size is num && size >= 24) || size == '40';
 }
 
-TextStyle huaziTextStyle(String value, {required bool dark}) {
+/// 用强调色临时拼一组三色渐变，明暗结构沿用朱砂那套。
+List<Color> _accentColors(Color accent, bool dark) {
+  final base = dark ? Color.lerp(accent, Colors.white, 0.18)! : accent;
+  return <Color>[
+    Color.lerp(base, Colors.black, 0.12)!,
+    Color.lerp(base, Colors.white, 0.35)!,
+    Color.lerp(base, Colors.black, 0.25)!,
+  ];
+}
+
+/// 花字文字样式。[accent] 用于预览这类「跟着强调色走」的场景；
+/// 不传时仍按 preset 取色，花字库本身不受影响。
+TextStyle huaziTextStyle(String value, {required bool dark, Color? accent}) {
   final parts = value.split(':');
   final id = parts.length > 1 ? parts[1] : 'zhu';
   final sizeToken = parts.length > 2 ? parts[2] : 'm';
   final preset = huaziPresetById(id) ?? huaziPresets.first;
-  final colors = preset.resolvedColors(dark);
+  final colors =
+      accent == null ? preset.resolvedColors(dark) : _accentColors(accent, dark);
+  final glow = accent ?? preset.glow;
   final paint = Paint()
     ..shader = ui.Gradient.linear(
       const Offset(0, 0),
@@ -186,7 +200,7 @@ TextStyle huaziTextStyle(String value, {required bool dark}) {
     foreground: paint,
     shadows: [
       Shadow(
-        color: preset.glow.withValues(alpha: dark ? 0.4 : 0.2),
+        color: glow.withValues(alpha: dark ? 0.4 : 0.2),
         blurRadius: dark ? 15 : 9,
         offset: const Offset(0, 3),
       ),

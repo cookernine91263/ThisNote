@@ -18,6 +18,26 @@
 
 ## 功能
 
+### 2.0 新增
+
+- **打字机模式 / 段落聚焦**：光标停在纸中央；只留下正在写的那一段，其余文字轻轻淡去
+- **中文文风检查**：离线标出口水词、重复词、长句、连续标点与多余空格，点一下跳到那一句
+- **全局搜索替换**：Ctrl/⌘ + Shift + H，跨所有笔记替换，替换前逐篇留历史版本
+- **笔记链接与反链**：在「更多」里插入 `[[标题]]`，前后文自动连起来
+- **收藏视图 / 完整标签页**：写过又舍不得删的文字有了自己的位置
+- **单篇字数目标 / 写作时长**：每日目标之外，再给这一篇一个落点
+- **版本对比**：恢复历史版本前先看清改了什么
+- **桌面多标签页 / 分屏**：Ctrl/⌘ + Tab 切换，Ctrl/⌘ + W 关闭；两栏可以同时写两篇
+- **表格块**：在工具栏插入表格，按 Tab 分隔单元格编辑，DOCX / PDF / HTML / Markdown 都能带走
+- **模板与每日日记**：把当前笔记存成模板，支持 `{{date}}` / `{{weekday}}`；命令面板一键打开今天的日记
+- **互操作**：新增 EPUB 导出、DOCX 导入与系统打印（先生成 PDF，再交给系统阅读器）
+- **手机手势与分享**：列表左滑删除、右滑收藏；其他应用分享的文字/链接可直接落成新笔记
+- **更安全**：API Key 与 WebDAV 密码存进系统钥匙串；`library.json` 只留摘要，全文进入独立索引
+- **崩溃恢复**：异常退出后，比磁盘更新的草稿会在下次启动时询问是否捡回
+- **冲刺与目录**：25 分钟写作冲刺；大纲可以一键插入目录
+- **更轻的安装包**：字体按通用规范汉字子集化，Windows 安装包 53 → 24 MB，Android APK 79.5 → 38 MB；罕见字自动回退系统字体，仍可导入自己的完整字体
+- **更快的启动与保存**：先出纸再读库；打字不再每次编码整篇文档；PDF 字体按需加载
+
 ### 写作
 
 - **中文 / English 界面**：引导页与设置里都能切换，切换后立即生效，笔记内容不会被改写
@@ -38,7 +58,7 @@
 - 自动保存、5 分钟自动版本快照（最多 40 个）、撤销 / 重做
 - 专注模式、纸纹、深色模式、界面字号 / 正文字号 / 行距 / 段间距 / 字间距 / 页宽 / 强调色可调；数值可直接填写，大整数自动吸附
 - 深/浅色切换从点击位置圆形扩散，文字不缩放
-- 文件夹可嵌套、可拖拽排序；长按笔记卡片即可拖动，拖进文件夹、同日笔记可调顺序
+- 文件夹以卡片和笔记排在同一列表；拖到文件夹卡片中间即可放进去，拖到上/下边缘是普通排序，拖近列表边缘会自动滚动；支持多选批量操作与「固定」
 - 删除笔记时卡片快速收起，底部出现「撤销」，五秒内都能恢复
 - 命令面板（Ctrl/⌘ + K）：搜任一篇笔记、执行格式命令、查找 / 目录 / 整理排版 / 导出
 
@@ -48,7 +68,7 @@
 - 日历视图：月历、写作热力、心情圆点、「那年今日」
 - 心情（5 种）与天气（6 种）记录
 - 标签（输入时自动补全写过的标签）、置顶、收藏、回收站（可恢复 / 永久删除）
-- 文件夹树（可嵌套）、笔记拖拽归类、同日笔记手动排序
+- 文件夹卡片（可嵌套）与笔记同列表、拖拽归类与排序、「时间」视图、多选批量整理、固定不参与排序
 - 今日目标、连续写作天数
 
 ### 统计
@@ -125,11 +145,11 @@
 
 当前环境已生成：
 
-- `dist/ThisNote-Setup-1.3.1.exe`（Windows x64 安装包）
-- `dist/ThisNote-Android-1.3.1-arm64.apk`（Android 8.0+ arm64，已签名）
+- `dist/ThisNote-Setup-2.0.0.exe`（Windows x64 安装包，约 24 MB）
+- `dist/ThisNote-Android-2.0.0-arm64.apk`（Android 8.0+ arm64，已签名，约 38 MB）
 - `dist/SHA256SUMS.txt`
 
-安装说明见 `dist/安装说明.txt`。
+安装说明见 `dist/安装说明.txt`，更新内容见 `dist/release-2.0.0.md`。
 
 ## 技术栈
 
@@ -141,7 +161,7 @@
 | 存储 | 本地 JSON 文件（原子写入）+ 每篇独立文件 + 历史快照目录；无数据库依赖 |
 | 导出 | `pdf`、`archive`（OOXML zip）、`xml`，自行构建 DOCX / PDF |
 | 桌面 | `window_manager` 无边框窗口、自绘标题栏 |
-| 字体 | Noto Sans SC（Light/Regular/Bold）、Noto Serif SC、LXGW WenKai、Ma Shan Zheng、ZCOOL XiaoWei、Smiley Sans、Source Han Mono |
+| 字体 | Noto Sans SC（Light/Regular/Bold）、Noto Serif SC、LXGW WenKai、Ma Shan Zheng、ZCOOL XiaoWei、Smiley Sans、Source Han Mono；按通用规范汉字子集化，罕见字回退系统字体（`tools/subset_fonts.py`） |
 | 图标 | Lucide Icons |
 | 构建 | Windows：MSVC 2022 + Windows 11 SDK；Android：JDK 17 + Android SDK 36 + Gradle 9.3.1 |
 
@@ -178,7 +198,7 @@ tools/                           字体准备、图标生成脚本
 ```powershell
 cd app
 flutter pub get
-flutter build windows --release
+flutter build windows --release --split-debug-info=build/symbols/windows
 # 产物：build/windows/x64/runner/Release/this_note.exe
 ```
 
@@ -186,7 +206,7 @@ flutter build windows --release
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" ..\installer\ThisNote.iss
-# 产物：dist/ThisNote-Setup-1.3.1.exe
+# 产物：dist/ThisNote-Setup-2.0.0.exe
 ```
 
 ### Android
@@ -202,7 +222,8 @@ storeFile=thisnote-release.jks
 
 ```powershell
 cd app
-flutter build apk --release --target-platform android-arm64
+flutter build apk --release --target-platform android-arm64 `
+  --split-debug-info=build/symbols/android --obfuscate
 # 产物：build/app/outputs/flutter-apk/app-release.apk（arm64）
 ```
 
@@ -241,7 +262,10 @@ data/
 | `Ctrl/⌘ + N` | 新建随笔 |
 | `Ctrl/⌘ + S` | 立即保存 |
 | `Ctrl/⌘ + F` | 查找 |
-| `Ctrl/⌘ + H` | 查找替换 |
+| `Ctrl/⌘ + H` | 当前笔记内查找替换 |
+| `Ctrl/⌘ + Shift + H` | 全局搜索替换 |
+| `Ctrl/⌘ + Tab` | 切换标签页 |
+| `Ctrl/⌘ + W` | 关闭当前标签页 |
 | `Ctrl/⌘ + Shift + V` | 粘贴为纯文本 |
 | `Ctrl/⌘ + B` | 加粗 |
 | `Ctrl/⌘ + I` | 倾斜 |

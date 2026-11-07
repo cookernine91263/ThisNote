@@ -1,0 +1,19 @@
+name: lucide_icons_flutter
+description: Lucide icons, trimmed to the single regular-weight font used by ThisNote.
+version: 4.0.1
+homepage: https://lucide.dev
+repository: https://github.com/vqh2602/lucide-flutter-main
+publish_to: 'none'
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  fonts:
+    - family: Lucide
+      fonts:
+        - asset: assets/lucide.ttf

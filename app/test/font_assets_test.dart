@@ -11,7 +11,7 @@ void main() {
       'assets/fonts/SourceHanMonoSC-Regular.otf',
     ]) {
       final data = await rootBundle.load(asset);
-      expect(data.lengthInBytes, greaterThan(1024 * 1024), reason: asset);
+      expect(data.lengthInBytes, greaterThan(512 * 1024), reason: asset);
     }
 
     for (final license in const [

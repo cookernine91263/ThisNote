@@ -64,6 +64,27 @@ void main() {
     expect(restored.customFonts.first.id, 'user_2');
   });
 
+  testWidgets('冲刺计时可以开始与停止', (tester) async {
+    final temp = Directory.systemTemp.createTempSync('thisnote-sprint-');
+    addTearDown(() {
+      try {
+        temp.deleteSync(recursive: true);
+      } catch (_) {}
+    });
+    final state = AppState(store: NoteStore(rootOverride: temp.path));
+    addTearDown(state.dispose);
+    await tester.runAsync(() async {
+      await state.init();
+      await state.openNote('seed-welcome', autofocus: false);
+    });
+    final session = state.session!;
+    session.startSprint(25);
+    expect(session.sprintActive, isTrue);
+    expect(session.sprintRemainingSeconds, greaterThan(0));
+    session.stopSprint();
+    expect(session.sprintActive, isFalse);
+  });
+
   testWidgets('动笔后写作时长会跟着累加', (tester) async {
     final temp = Directory.systemTemp.createTempSync('thisnote-time-');
     addTearDown(() {

@@ -2,6 +2,8 @@
 
 「此记 · ThisNote」的代码以 MIT 发布；随应用分发的字体与开源依赖保留各自许可证。
 
+字体文件经过子集化（只保留通用规范汉字 / 一级常用字与标点）以减小安装包；这是 SIL OFL 1.1 允许的修改，许可证原文随字体一起分发。罕见字由系统 CJK 字体回退。
+
 ## 字体
 
 ### Noto Sans SC
@@ -75,8 +77,9 @@
 | intl | BSD-3-Clause | 日期与本地化 |
 | uuid | MIT | 文档 ID |
 | crypto | BSD-3-Clause | 密码哈希 |
-| flutter_animate | MIT | 少量入场动效 |
-| lucide_icons_flutter | ISC | 图标 |
+| flutter_secure_storage | BSD-3-Clause | API Key / WebDAV 密码进系统钥匙串 |
+| lucide_icons_flutter | ISC | 图标（本地精简为单一常规字重） |
+| flutter_secure_storage_windows（本地补丁） | BSD-3-Clause | 去除 ATL 依赖，使用 Win32 凭证 API |
 | Inno Setup | Inno Setup License | Windows 安装包 |
 
 以上依赖的完整许可证文本可在各自 pub 包或项目仓库中查阅。

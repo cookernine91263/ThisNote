@@ -1,5 +1,6 @@
 import 'dart:ui' show lerpDouble;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 
 /// 此记的色彩系统：宣纸、墨、朱砂。
@@ -190,6 +191,15 @@ class AppPalette extends ThemeExtension<AppPalette> {
 class AppTypography {
   static const ui = 'NotoSansSC';
 
+  /// 子集字体只保留通用规范汉字；罕见字交给系统 CJK 字体。
+  static const fallback = <String>[
+    'NotoSansSC',
+    'Microsoft YaHei',
+    'Noto Sans CJK SC',
+    'PingFang SC',
+    'sans-serif',
+  ];
+
   static TextTheme textTheme(AppPalette c) {
     TextStyle base(double size, FontWeight w, {double? height, double? ls}) =>
         TextStyle(
@@ -199,7 +209,7 @@ class AppTypography {
           color: c.ink,
           height: height,
           letterSpacing: ls,
-          fontFamilyFallback: const ['NotoSansSC', 'Microsoft YaHei'],
+          fontFamilyFallback: fallback,
         );
     return TextTheme(
       displayLarge: base(44, FontWeight.w300, height: 1.15, ls: -1.2),
@@ -229,11 +239,18 @@ class AppTheme {
     'gold': Color(0xFF9C7A43),
   };
 
+  static final Map<String, ThemeData> _cache = <String, ThemeData>{};
+
   static ThemeData build(
     Brightness brightness,
     double fontScale, {
     String accent = 'vermilion',
   }) {
+    // 每次保存状态变化都重建两套 ThemeData 很浪费；参数相同时直接复用。
+    final cacheKey =
+        '${brightness.name}|$fontScale|$accent|${defaultTargetPlatform.name}';
+    final cached = _cache[cacheKey];
+    if (cached != null) return cached;
     var c = brightness == Brightness.dark ? AppPalette.dark : AppPalette.light;
     final custom = accent.startsWith('#')
         ? int.tryParse(accent.substring(1), radix: 16)
@@ -279,7 +296,7 @@ class AppTheme {
       inversePrimary: c.accent,
     );
 
-    return ThemeData(
+    final theme = ThemeData(
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
@@ -369,6 +386,8 @@ class AppTheme {
         },
       ),
     );
+    _cache[cacheKey] = theme;
+    return theme;
   }
 }
 
@@ -390,3 +409,13 @@ class Radii {
   static const lg = 16.0;
   static const xl = 22.0;
 }
+
+/// 某个主题模式在当下实际呈现的明暗。`system` 跟随系统当前外观。
+/// 用来判断「换主题后画面到底变没变」：系统深色下点墨夜其实不变化，
+/// 就不该播那段看不见的扩散动画。
+Brightness brightnessOfMode(BuildContext context, ThemeMode mode) =>
+    switch (mode) {
+      ThemeMode.light => Brightness.light,
+      ThemeMode.dark => Brightness.dark,
+      ThemeMode.system => MediaQuery.platformBrightnessOf(context),
+    };

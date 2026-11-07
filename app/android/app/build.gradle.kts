@@ -29,6 +29,10 @@ android {
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 26
         targetSdk = flutter.targetSdkVersion
+        // 只发 arm64；插件的其他 ABI so 不跟着进包。
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
@@ -45,6 +49,13 @@ android {
                 storeFile = file(keystoreProperties["storeFile"] as String)
                 storePassword = keystoreProperties["storePassword"] as String
             }
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // 只发 arm64：插件带的 32 位 / x86_64 dartjni 不进入安装包。
+            excludes += listOf("lib/armeabi-v7a/**", "lib/x86_64/**")
         }
     }
 

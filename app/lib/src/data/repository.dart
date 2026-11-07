@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -21,6 +22,9 @@ class NoteStore {
   late Directory assetsDir;
   late Directory fontsDir;
   late Directory conversationsDir;
+  late Directory indexDir;
+  late Directory indexTextDir;
+  late Directory journalDir;
 
   bool _initialized = false;
 
@@ -80,6 +84,9 @@ class NoteStore {
     assetsDir = Directory(p.join(root.path, 'assets'));
     fontsDir = Directory(p.join(root.path, 'fonts'));
     conversationsDir = Directory(p.join(root.path, 'conversations'));
+    indexDir = Directory(p.join(root.path, 'index'));
+    indexTextDir = Directory(p.join(indexDir.path, 'text'));
+    journalDir = Directory(p.join(root.path, 'journal'));
     for (final d in [
       root,
       notesDir,
@@ -87,6 +94,9 @@ class NoteStore {
       assetsDir,
       fontsDir,
       conversationsDir,
+      indexDir,
+      indexTextDir,
+      journalDir,
     ]) {
       if (!await d.exists()) await d.create(recursive: true);
     }
@@ -97,6 +107,7 @@ class NoteStore {
   File get _settingsFile => File(p.join(root.path, 'settings.json'));
   File get _foldersFile => File(p.join(root.path, 'folders.json'));
   File get _activityFile => File(p.join(root.path, 'activity.json'));
+  File get _templatesFile => File(p.join(root.path, 'templates.json'));
 
   /// 先读正文，读不出来再退到上一次写入留下的 .bak。
   Future<String?> _readWithBackup(File file) async {
@@ -152,8 +163,42 @@ class NoteStore {
   }
 
   Future<void> persistLibrary(List<NoteMeta> metas) async {
-    final raw = jsonEncode(metas.map((e) => e.toJson()).toList());
+    // 索引只写摘要；全文在 notes/ 与 index/text/ 里，不再重复塞进 library。
+    final raw = jsonEncode(metas.map((e) => e.toIndexJson()).toList());
     await _writeAtomic(_libraryFile, raw);
+  }
+
+  File _indexTextFile(String id) =>
+      File(p.join(indexTextDir.path, '$id.txt'));
+
+  Future<Map<String, String>> loadIndexTexts() {
+    final path = indexTextDir.path;
+    return Isolate.run(() => _loadIndexAt(path));
+  }
+
+  Future<void> rebuildIndex(List<NoteMeta> metas) async {
+    for (final meta in metas) {
+      var text = meta.text;
+      if (text.isEmpty) {
+        final note = await loadNote(meta.id);
+        text = note?.text ?? '';
+      }
+      await _writeAtomic(_indexTextFile(meta.id), text);
+      meta.preview = excerptOf(text);
+    }
+  }
+
+  /// 迁移前把旧 library 单独留一份；失败时还能用旧读取器启动。
+  Future<void> backupLibraryForMigration() async {
+    if (!await _libraryFile.exists()) return;
+    final stamp = DateTime.now()
+        .toIso8601String()
+        .replaceAll(':', '-')
+        .split('.')
+        .first;
+    final dir = Directory(p.join(root.path, 'backups', 'v1-$stamp'));
+    await dir.create(recursive: true);
+    await _libraryFile.copy(p.join(dir.path, 'library.json'));
   }
 
   Future<List<Folder>> loadFolders() async {
@@ -192,6 +237,7 @@ class NoteStore {
 
   Future<void> saveNote(Note note) async {
     await _writeAtomic(_noteFile(note.id), jsonEncode(note.toJson()));
+    await _writeAtomic(_indexTextFile(note.id), note.text);
   }
 
   Future<void> deleteNoteFile(String id) async {
@@ -199,6 +245,13 @@ class NoteStore {
       final f = File(path);
       if (await f.exists()) await f.delete();
     }
+    final index = _indexTextFile(id);
+    if (await index.exists()) {
+      try {
+        await index.delete();
+      } catch (_) {}
+    }
+    await deleteJournal(id);
     final h = Directory(p.join(historyDir.path, id));
     if (await h.exists()) await h.delete(recursive: true);
     await deleteConversation(id);
@@ -333,12 +386,70 @@ class NoteStore {
     return ActivityLog.decode(await _readWithBackup(_activityFile));
   }
 
+  Future<List<UserTemplate>> loadTemplates() async {
+    final raw = await _readWithBackup(_templatesFile);
+    if (raw == null) return [];
+    try {
+      final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+      return list
+          .map(UserTemplate.fromJson)
+          .where((template) => template.valid)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  File _journalFile(String id) => File(p.join(journalDir.path, '$id.json'));
+
+  Future<void> saveJournal(String id, Map<String, dynamic> data) async {
+    await _writeAtomic(_journalFile(id), jsonEncode(data));
+  }
+
+  Future<List<JournalEntry>> loadJournals() async {
+    final result = <JournalEntry>[];
+    if (!await journalDir.exists()) return result;
+    await for (final entity in journalDir.list()) {
+      if (entity is! File || !entity.path.endsWith('.json')) continue;
+      try {
+        final json = jsonDecode(await entity.readAsString());
+        if (json is Map) {
+          final entry = JournalEntry.fromJson(json.cast<String, dynamic>());
+          if (entry.id.isNotEmpty) result.add(entry);
+        }
+      } catch (_) {}
+    }
+    result.sort((a, b) => b.savedAt.compareTo(a.savedAt));
+    return result;
+  }
+
+  Future<void> deleteJournal(String id) async {
+    final file = _journalFile(id);
+    if (!await file.exists()) return;
+    try {
+      await file.delete();
+    } catch (_) {}
+  }
+
+  Future<void> saveTemplates(List<UserTemplate> templates) async {
+    await _writeAtomic(
+      _templatesFile,
+      jsonEncode(templates.map((template) => template.toJson()).toList()),
+    );
+  }
+
   Future<void> saveActivity(ActivityLog log) async {
     await _writeAtomic(_activityFile, log.encode());
   }
 
-  Future<void> saveSettings(AppSettings settings) async {
-    await _writeAtomic(_settingsFile, jsonEncode(settings.toJson()));
+  Future<void> saveSettings(
+    AppSettings settings, {
+    bool includeSecrets = true,
+  }) async {
+    await _writeAtomic(
+      _settingsFile,
+      jsonEncode(settings.toJson(includeSecrets: includeSecrets)),
+    );
   }
 
   Future<void> seedIfEmpty(List<NoteMeta> metas) async {
@@ -360,75 +471,21 @@ class NoteStore {
     await persistLibrary(metas);
   }
 
-  /// 把所有内容打包成 zip，返回文件路径。
-  Future<String> createBackup() async {
-    final archive = Archive();
-    Future<void> addDirectory(Directory dir, String prefix) async {
-      if (!await dir.exists()) return;
-      await for (final entity in dir.list(recursive: true)) {
-        if (entity is! File) continue;
-        final rel = p.relative(entity.path, from: dir.path).replaceAll('\\', '/');
-        final data = await entity.readAsBytes();
-        archive.addFile(ArchiveFile('$prefix/$rel', data.length, data));
-      }
-    }
+  /// 把所有内容打包成 zip，返回文件路径。压缩在独立 isolate 里跑。
+  Future<String> createBackup() {
+    final path = root.path;
+    return Isolate.run(() => _createBackupAt(path));
+  }
 
-    await addDirectory(notesDir, 'notes');
-    await addDirectory(assetsDir, 'assets');
-    await addDirectory(historyDir, 'history');
-    await addDirectory(fontsDir, 'fonts');
-    await addDirectory(conversationsDir, 'conversations');
-    if (await _libraryFile.exists()) {
-      final data = await _libraryFile.readAsBytes();
-      archive.addFile(ArchiveFile('library.json', data.length, data));
-    }
-    if (await _settingsFile.exists()) {
-      final data = await _settingsFile.readAsBytes();
-      archive.addFile(ArchiveFile('settings.json', data.length, data));
-    }
-    if (await _foldersFile.exists()) {
-      final data = await _foldersFile.readAsBytes();
-      archive.addFile(ArchiveFile('folders.json', data.length, data));
-    }
-    if (await _activityFile.exists()) {
-      final data = await _activityFile.readAsBytes();
-      archive.addFile(ArchiveFile('activity.json', data.length, data));
-    }
-    final bytes = ZipEncoder().encode(archive);
-    final name = 'ThisNote-backup-${DateTime.now().millisecondsSinceEpoch}.zip';
-    final out = File(p.join(root.path, name));
-    await out.writeAsBytes(bytes, flush: true);
-    return out.path;
+  Future<Map<String, dynamic>?> readBackupManifest(String zipPath) {
+    final path = zipPath;
+    return Isolate.run(() => _readManifestAt(path));
   }
 
   /// 从 zip 恢复（覆盖当前数据，恢复前会自动做一次备份）。
-  Future<int> restoreBackup(String zipPath) async {
-    await createBackup();
-    final bytes = await File(zipPath).readAsBytes();
-    final archive = ZipDecoder().decodeBytes(bytes);
-    var count = 0;
-    for (final file in archive) {
-      if (!file.isFile) continue;
-      final name = file.name.replaceAll('\\', '/');
-      if (name == 'library.json' ||
-          name == 'settings.json' ||
-          name == 'folders.json' ||
-          name == 'activity.json') {
-        final out = File(p.join(root.path, name));
-        await out.writeAsBytes(file.content as List<int>, flush: true);
-        count++;
-      } else if (name.startsWith('notes/') ||
-          name.startsWith('assets/') ||
-          name.startsWith('fonts/') ||
-          name.startsWith('history/') ||
-          name.startsWith('conversations/')) {
-        final out = File(p.join(root.path, name));
-        await out.create(recursive: true);
-        await out.writeAsBytes(file.content as List<int>, flush: true);
-        count++;
-      }
-    }
-    return count;
+  Future<int> restoreBackup(String zipPath) {
+    final path = root.path;
+    return Isolate.run(() => _restoreBackupAt(path, zipPath));
   }
 
   /// 同一个文件的写入串行执行：切换视图、改设置都可能连续触发保存，
@@ -470,4 +527,125 @@ class NoteStore {
     }
     await tmp.rename(file.path);
   }
+}
+
+Future<Map<String, String>> _loadIndexAt(String dirPath) async {
+  final result = <String, String>{};
+  final dir = Directory(dirPath);
+  if (!await dir.exists()) return result;
+  await for (final entity in dir.list()) {
+    if (entity is! File || !entity.path.endsWith('.txt')) continue;
+    try {
+      result[p.basenameWithoutExtension(entity.path)] =
+          await entity.readAsString();
+    } catch (_) {
+      // 单个索引损坏时退回全文重建。
+    }
+  }
+  return result;
+}
+
+Future<Map<String, dynamic>?> _readManifestAt(String zipPath) async {
+  final file = File(zipPath);
+  if (!await file.exists()) return null;
+  final archive = ZipDecoder().decodeBytes(await file.readAsBytes());
+  for (final entry in archive.files) {
+    if (entry.name != 'backup-manifest.json') continue;
+    final decoded = jsonDecode(
+      utf8.decode(entry.content as List<int>, allowMalformed: true),
+    );
+    return decoded is Map ? decoded.cast<String, dynamic>() : null;
+  }
+  return null;
+}
+
+Future<String> _createBackupAt(String rootPath) async {
+  final root = Directory(rootPath);
+  final archive = Archive();
+  Future<void> addDirectory(String name, String prefix) async {
+    final dir = Directory(p.join(root.path, name));
+    if (!await dir.exists()) return;
+    await for (final entity in dir.list(recursive: true)) {
+      if (entity is! File) continue;
+      final rel = p.relative(entity.path, from: dir.path).replaceAll('\\', '/');
+      final data = await entity.readAsBytes();
+      archive.addFile(ArchiveFile('$prefix/$rel', data.length, data));
+    }
+  }
+
+  for (final entry in const {
+    'notes': 'notes',
+    'assets': 'assets',
+    'history': 'history',
+    'fonts': 'fonts',
+    'conversations': 'conversations',
+    'index': 'index',
+    'journal': 'journal',
+  }.entries) {
+    await addDirectory(entry.key, entry.value);
+  }
+  for (final name in const [
+    'library.json',
+    'settings.json',
+    'folders.json',
+    'activity.json',
+    'templates.json',
+  ]) {
+    final file = File(p.join(root.path, name));
+    if (!await file.exists()) continue;
+    final data = await file.readAsBytes();
+    archive.addFile(ArchiveFile(name, data.length, data));
+  }
+  final manifest = utf8.encode(
+    jsonEncode({
+      'app': 'ThisNote',
+      'format': 1,
+      'createdAt': DateTime.now().toIso8601String(),
+      'files': archive.files
+          .where((file) => file.isFile)
+          .map((file) => file.name)
+          .toList(growable: false),
+    }),
+  );
+  archive.addFile(
+    ArchiveFile('backup-manifest.json', manifest.length, manifest),
+  );
+  final bytes = ZipEncoder().encode(archive);
+  final name = 'ThisNote-backup-${DateTime.now().millisecondsSinceEpoch}.zip';
+  final out = File(p.join(root.path, name));
+  await out.writeAsBytes(bytes, flush: true);
+  return out.path;
+}
+
+Future<int> _restoreBackupAt(String rootPath, String zipPath) async {
+  await _createBackupAt(rootPath);
+  final root = Directory(rootPath);
+  final bytes = await File(zipPath).readAsBytes();
+  final archive = ZipDecoder().decodeBytes(bytes);
+  var count = 0;
+  for (final file in archive) {
+    if (!file.isFile) continue;
+    final name = file.name.replaceAll('\\', '/');
+    if (name == 'backup-manifest.json') continue;
+    final isRootFile = const {
+      'library.json',
+      'settings.json',
+      'folders.json',
+      'activity.json',
+      'templates.json',
+    }.contains(name);
+    final isFolderFile = name.startsWith('notes/') ||
+        name.startsWith('assets/') ||
+        name.startsWith('fonts/') ||
+        name.startsWith('history/') ||
+        name.startsWith('conversations/') ||
+        name.startsWith('index/') ||
+        name.startsWith('journal/');
+    if (!isRootFile && !isFolderFile) continue;
+    final out = File(p.join(root.path, name));
+    await out.create(recursive: true);
+    await out.writeAsBytes(file.content as List<int>, flush: true);
+    count++;
+  }
+  return count;
 }

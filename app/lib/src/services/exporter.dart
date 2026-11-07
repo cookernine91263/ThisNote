@@ -13,10 +13,17 @@ import '../data/models.dart';
 import '../data/repository.dart';
 import '../features/editor/code_block.dart';
 import '../features/editor/huazi.dart';
+import '../features/editor/table_embed.dart';
 
 /// 导出文件里会出现的固定文案（标题占位、作者、日期标签等）。
 const _en = <String, String>{
   'Word 文档': 'Word document',
+  'EPUB 电子书': 'EPUB ebook',
+  '适合阅读器，图片与目录一起带走':
+      'For e-readers, with images and a table of contents',
+  '打印': 'Print',
+  '打开系统 PDF 阅读器，再打印':
+      'Open the system PDF reader, then print',
   'PNG 图片': 'PNG image',
   '网页 HTML': 'Web page (HTML)',
   '纯文本': 'Plain text',
@@ -33,12 +40,14 @@ const _en = <String, String>{
   '此记 · ThisNote · 导出于 {date}': 'ThisNote · Exported on {date}',
 };
 
-enum ExportFormat { docx, pdf, png, markdown, html, txt }
+enum ExportFormat { docx, pdf, epub, printPdf, png, markdown, html, txt }
 
 extension ExportFormatX on ExportFormat {
   String get label => switch (this) {
         ExportFormat.docx => tr('Word 文档', null, _en),
         ExportFormat.pdf => tr('PDF', null, _en),
+        ExportFormat.epub => tr('EPUB 电子书', null, _en),
+        ExportFormat.printPdf => tr('打印', null, _en),
         ExportFormat.png => tr('PNG 图片', null, _en),
         ExportFormat.markdown => tr('Markdown', null, _en),
         ExportFormat.html => tr('网页 HTML', null, _en),
@@ -48,6 +57,8 @@ extension ExportFormatX on ExportFormat {
   String get extension => switch (this) {
         ExportFormat.docx => 'docx',
         ExportFormat.pdf => 'pdf',
+        ExportFormat.epub => 'epub',
+        ExportFormat.printPdf => 'pdf',
         ExportFormat.png => 'png',
         ExportFormat.markdown => 'md',
         ExportFormat.html => 'html',
@@ -57,6 +68,8 @@ extension ExportFormatX on ExportFormat {
   String get description => switch (this) {
         ExportFormat.docx => tr('保留标题、加粗、颜色与图片', null, _en),
         ExportFormat.pdf => tr('适合打印与分享的固定版式', null, _en),
+        ExportFormat.epub => tr('适合阅读器，图片与目录一起带走', null, _en),
+        ExportFormat.printPdf => tr('打开系统 PDF 阅读器，再打印', null, _en),
         ExportFormat.png => tr('一张排版好的长图，适合收藏与分享', null, _en),
         ExportFormat.markdown => tr('通用纯文本格式，便于迁移', null, _en),
         ExportFormat.html => tr('带排版的网页，可直接打开', null, _en),
@@ -113,6 +126,11 @@ class NoteExporter {
       }
       if (block.isCode) {
         document.write(_docxCodeBlock(block));
+        lastList = '';
+        continue;
+      }
+      if (block.table != null) {
+        document.write(_docxTable(block.table!));
         lastList = '';
         continue;
       }
@@ -276,38 +294,218 @@ class NoteExporter {
   static pw.Font? _pdfWenKai;
   static pw.Font? _pdfMono;
 
-  Future<void> _loadPdfFonts() async {
-    if (_pdfRegular != null) return;
-    _pdfRegular = pw.Font.ttf(
+  Future<void> _loadPdfFonts(Note note) async {
+    _pdfRegular ??= pw.Font.ttf(
       await rootBundle.load('assets/fonts/NotoSansSC-Regular.ttf'),
     );
-    _pdfBold = pw.Font.ttf(
+    _pdfBold ??= pw.Font.ttf(
       await rootBundle.load('assets/fonts/NotoSansSC-Bold.ttf'),
-    );
-    _pdfLight = pw.Font.ttf(
-      await rootBundle.load('assets/fonts/NotoSansSC-Light.ttf'),
     );
     // 中文没有随字体分发的可靠斜体字面；导出时用常规字重保持版面稳定。
     _pdfOblique = _pdfRegular;
-    _pdfWenKai = pw.Font.ttf(
+    _pdfWenKai ??= pw.Font.ttf(
       await rootBundle.load('assets/fonts/LXGWWenKai-Regular.ttf'),
     );
-    try {
-      _pdfMono = pw.Font.ttf(
-        await rootBundle.load('assets/fonts/SourceHanMonoSC-Regular.otf'),
+    final raw = jsonEncode(note.delta);
+    if (_pdfLight == null &&
+        (raw.contains('NotoSansSCLight') || raw.contains('style:thin'))) {
+      _pdfLight = pw.Font.ttf(
+        await rootBundle.load('assets/fonts/NotoSansSC-Light.ttf'),
       );
-    } catch (_) {
-      _pdfMono = _pdfRegular;
+    }
+    if (_pdfMono == null && raw.contains('code-block')) {
+      try {
+        _pdfMono = pw.Font.ttf(
+          await rootBundle.load('assets/fonts/SourceHanMonoSC-Regular.otf'),
+        );
+      } catch (_) {
+        _pdfMono = _pdfRegular;
+      }
     }
   }
 
+  Future<Uint8List> epub(Note note) async {
+    final parser = _DeltaParser(note);
+    await parser.parse(store);
+    final title = _titleOf(note);
+    final lang = I18n.isEn ? 'en' : 'zh-CN';
+    final images = parser.images;
+
+    String imageMime(String ext) => switch (ext.toLowerCase()) {
+          'jpg' || 'jpeg' => 'image/jpeg',
+          'gif' => 'image/gif',
+          'webp' => 'image/webp',
+          'svg' => 'image/svg+xml',
+          _ => 'image/png',
+        };
+
+    final chapter = StringBuffer()
+      ..writeln('<?xml version="1.0" encoding="UTF-8"?>')
+      ..writeln('<!DOCTYPE html>')
+      ..writeln(
+        '<html xmlns="http://www.w3.org/1999/xhtml" '
+        'xml:lang="$lang" lang="$lang"><head>'
+        '<meta http-equiv="Content-Type" '
+        'content="application/xhtml+xml; charset=utf-8"/>'
+        '<title>${_esc(title)}</title>'
+        '<link rel="stylesheet" type="text/css" href="style.css"/></head><body>',
+      )
+      ..writeln('<h1 class="book-title">${_esc(title)}</h1>')
+      ..writeln('<p class="meta">${_esc(_metaLine(note))}</p>');
+
+    for (final block in parser.blocks) {
+      if (block.isDivider) {
+        chapter.writeln('<hr/>');
+        continue;
+      }
+      if (block.isCode) {
+        chapter.writeln(
+          '<pre><code>${_esc(block.code ?? block.runs.map((r) => r.text).join())}</code></pre>',
+        );
+        continue;
+      }
+      if (block.table != null) {
+        chapter.writeln(_htmlTable(block.table!));
+        continue;
+      }
+      final inner = StringBuffer();
+      for (final run in block.runs) {
+        if (run.isImage) {
+          final index = run.imageIndex;
+          if (index == null || index < 1 || index > images.length) continue;
+          final img = images[index - 1];
+          inner.write(
+            '<img src="images/${img.fileName}" alt="${_esc(tr('图片', null, _en))}"/>',
+          );
+          continue;
+        }
+        var text = _esc(run.text);
+        final attrs = run.attrs;
+        if (attrs['code'] == true) text = '<code>$text</code>';
+        if (attrs['strike'] == true) text = '<del>$text</del>';
+        if (attrs['italic'] == true) text = '<em>$text</em>';
+        if (attrs['bold'] == true) text = '<strong>$text</strong>';
+        if (attrs['underline'] == true) text = '<u>$text</u>';
+        final link = attrs['link'];
+        if (link is String &&
+            link.isNotEmpty &&
+            !link.startsWith('thisnote://')) {
+          text = '<a href="${_esc(link)}">$text</a>';
+        }
+        final color = attrs['color'];
+        if (color is String) {
+          text = '<span style="color:${_cssColor(color)}">$text</span>';
+        }
+        inner.write(text);
+      }
+      final header = block.attrs['header'];
+      final list = block.attrs['list'];
+      final quote = block.attrs['blockquote'] == true;
+      if (header is int && inner.isNotEmpty) {
+        final level = (header + 1).clamp(1, 6);
+        chapter.writeln('<h$level>$inner</h$level>');
+      } else if (quote) {
+        chapter.writeln('<blockquote><p>$inner</p></blockquote>');
+      } else if (list is String) {
+        final mark = list == 'checked'
+            ? '☑ '
+            : list == 'unchecked'
+                ? '☐ '
+                : list == 'ordered'
+                    ? '· '
+                    : '• ';
+        chapter.writeln('<p class="li">$mark$inner</p>');
+      } else if (inner.isNotEmpty) {
+        chapter.writeln('<p>$inner</p>');
+      }
+    }
+    chapter
+      ..writeln('<p class="meta">${_esc(_exportedOn(DateTime.now()))}</p>')
+      ..writeln('</body></html>');
+
+    final css = '''
+body { font-family: serif; line-height: 1.8; margin: 5%; color: #211E19; }
+h1, h2, h3, h4, h5, h6 { line-height: 1.4; }
+.book-title { font-size: 2em; margin-bottom: 0.2em; }
+.meta { color: #8D8576; font-size: 0.8em; }
+blockquote { border-left: 3px solid #A84637; margin: 1em 0; padding: 0.2em 1em; color: #575149; }
+pre { background: #F1EDE4; padding: 0.8em; overflow-x: auto; white-space: pre-wrap; }
+img { max-width: 100%; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+th, td { border: 1px solid #E3DAC8; padding: 0.3em 0.5em; }
+th { background: #F1EDE4; }
+hr { border: none; border-top: 1px solid #E3DAC8; margin: 1.4em 0; }
+''';
+
+    final nav = '''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="$lang" lang="$lang">
+<head><meta http-equiv="Content-Type" content="application/xhtml+xml; charset=utf-8"/><title>${_esc(title)}</title></head>
+<body><nav epub:type="toc"><h1>${_esc(title)}</h1><ol><li><a href="chapter.xhtml">${_esc(title)}</a></li></ol></nav></body></html>''';
+
+    final manifestImages = StringBuffer();
+    for (final img in images) {
+      manifestImages.writeln(
+        '<item id="img${img.index}" href="images/${img.fileName}" '
+        'media-type="${imageMime(img.extension)}"/>',
+      );
+    }
+    final opf = '''<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+<dc:identifier id="bookid">thisnote-${note.id}</dc:identifier>
+<dc:title>${_esc(title)}</dc:title>
+<dc:language>$lang</dc:language>
+<meta property="dcterms:modified">${DateTime.now().toUtc().toIso8601String().split('.').first}Z</meta>
+</metadata>
+<manifest>
+<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+<item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+<item id="css" href="style.css" media-type="text/css"/>
+$manifestImages</manifest>
+<spine><itemref idref="chapter"/></spine>
+</package>''';
+
+    final container = '''<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+<rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>''';
+
+    final archive = Archive();
+    void addText(String name, String text) {
+      final bytes = utf8.encode(text);
+      archive.addFile(ArchiveFile(name, bytes.length, bytes));
+    }
+
+    final mime = utf8.encode('application/epub+zip');
+    archive.addFile(
+      ArchiveFile('mimetype', mime.length, mime)
+        ..compression = CompressionType.none,
+    );
+    addText('META-INF/container.xml', container);
+    addText('OEBPS/content.opf', opf);
+    addText('OEBPS/nav.xhtml', nav);
+    addText('OEBPS/chapter.xhtml', chapter.toString());
+    addText('OEBPS/style.css', css);
+    for (final img in images) {
+      archive.addFile(
+        ArchiveFile(
+          'OEBPS/images/${img.fileName}',
+          img.bytes.length,
+          img.bytes,
+        ),
+      );
+    }
+    return Uint8List.fromList(ZipEncoder().encode(archive));
+  }
+
   Future<Uint8List> pdf(Note note, {Color? accent}) async {
-    await _loadPdfFonts();
+    await _loadPdfFonts(note);
     final parser = _DeltaParser(note);
     await parser.parse(store);
     final regular = _pdfRegular!;
     final bold = _pdfBold!;
-    final light = _pdfLight!;
+    final light = _pdfLight ?? regular;
     final oblique = _pdfOblique!;
     final wenkai = _pdfWenKai!;
     final mono = _pdfMono ?? regular;
@@ -368,6 +566,42 @@ class NoteExporter {
                 fontSize: 9.2,
                 lineSpacing: 2,
                 color: PdfColor.fromHex('#211E19'),
+              ),
+            ),
+          ),
+        );
+        continue;
+      }
+      if (block.table != null) {
+        final headerDecoration = pw.BoxDecoration(
+          color: PdfColor.fromHex('#F1EDE4'),
+        );
+        widgets.add(
+          pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(vertical: 6),
+            child: pw.TableHelper.fromTextArray(
+              data: block.table!.rows,
+              headerCount: block.table!.header ? 1 : 0,
+              border: pw.TableBorder.all(
+                color: PdfColor.fromHex('#D3C7B0'),
+                width: 0.5,
+              ),
+              headerDecoration: headerDecoration,
+              headerStyle: pw.TextStyle(
+                font: bold,
+                fontSize: 9.5,
+                color: PdfColor.fromHex('#211E19'),
+              ),
+              cellStyle: pw.TextStyle(
+                font: regular,
+                fontSize: 9.5,
+                color: PdfColor.fromHex('#211E19'),
+              ),
+              headerAlignment: pw.Alignment.centerLeft,
+              cellAlignment: pw.Alignment.centerLeft,
+              cellPadding: const pw.EdgeInsets.symmetric(
+                horizontal: 5,
+                vertical: 4,
               ),
             ),
           ),
@@ -644,6 +878,11 @@ class NoteExporter {
         out.writeln();
         continue;
       }
+      if (block.table != null) {
+        out.writeln(_mdTable(block.table!));
+        out.writeln();
+        continue;
+      }
       final text = block.runs.map((r) {
         if (r.isImage) return '![${tr('图片', null, _en)}](${r.imagePath})';
         var t = r.text;
@@ -678,6 +917,130 @@ class NoteExporter {
     return out.toString();
   }
 
+  Future<String> wechatHtml(Note note) async {
+    final parser = _DeltaParser(note);
+    await parser.parse(store);
+    final title = _titleOf(note);
+    final out = StringBuffer();
+    const bodyStyle =
+        'margin:0 0 1em;font-size:16px;line-height:1.9;color:#211E19;';
+    out.writeln(
+      '<h1 style="font-size:24px;line-height:1.4;margin:0 0 8px;'
+      'color:#211E19;">${_esc(title)}</h1>',
+    );
+    out.writeln(
+      '<p style="margin:0 0 24px;font-size:12px;color:#8D8576;">'
+      '${_esc(_metaLine(note))}</p>',
+    );
+    for (final block in parser.blocks) {
+      if (block.isDivider) {
+        out.writeln(
+          '<hr style="border:none;border-top:1px solid #E3DAC8;margin:24px 0;"/>',
+        );
+        continue;
+      }
+      if (block.isCode) {
+        final code = block.code ?? block.runs.map((run) => run.text).join();
+        out.writeln(
+          '<pre style="background:#F1EDE4;padding:12px 14px;border-radius:6px;'
+          'overflow-x:auto;font-size:13px;line-height:1.7;">'
+          '<code>${_esc(code)}</code></pre>',
+        );
+        continue;
+      }
+      if (block.table != null) {
+        out.writeln(_wechatTable(block.table!));
+        continue;
+      }
+      final inner = StringBuffer();
+      for (final run in block.runs) {
+        if (run.isImage) {
+          final bytes = await store.readAsset(run.imagePath!);
+          if (bytes == null) continue;
+          final ext = p.extension(run.imagePath!).replaceAll('.', '');
+          final mime = switch (ext.toLowerCase()) {
+            'jpg' || 'jpeg' => 'image/jpeg',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            _ => 'image/png',
+          };
+          inner.write(
+            '<img src="data:$mime;base64,${base64Encode(bytes)}" '
+            'style="max-width:100%;border-radius:4px;"/>',
+          );
+          continue;
+        }
+        var text = _esc(run.text);
+        final attrs = run.attrs;
+        if (attrs['code'] == true) {
+          text = '<code style="background:#F1EDE4;padding:1px 4px;'
+              'border-radius:3px;">$text</code>';
+        }
+        if (attrs['strike'] == true) text = '<del>$text</del>';
+        if (attrs['italic'] == true) text = '<em>$text</em>';
+        if (attrs['bold'] == true) text = '<strong>$text</strong>';
+        if (attrs['underline'] == true) {
+          text = '<u style="text-decoration:underline;">$text</u>';
+        }
+        final link = attrs['link'];
+        if (link is String &&
+            link.isNotEmpty &&
+            !link.startsWith('thisnote://')) {
+          text = '<a href="${_esc(link)}" style="color:#56697D;">$text</a>';
+        }
+        final color = attrs['color'];
+        if (color is String) {
+          text = '<span style="color:${_cssColor(color)};">$text</span>';
+        }
+        final background = attrs['background'];
+        if (background is String) {
+          text = '<span style="background:${_cssColor(background)};">'
+              '$text</span>';
+        }
+        inner.write(text);
+      }
+      final header = block.attrs['header'];
+      final list = block.attrs['list'];
+      final quote = block.attrs['blockquote'] == true;
+      if (header is int && inner.isNotEmpty) {
+        final level = (header + 1).clamp(1, 6);
+        final size = switch (level) {
+          1 => 22,
+          2 => 20,
+          3 => 18,
+          _ => 16,
+        };
+        out.writeln(
+          '<h$level style="font-size:${size}px;line-height:1.5;'
+          'margin:1.4em 0 .5em;color:#211E19;">$inner</h$level>',
+        );
+      } else if (quote) {
+        out.writeln(
+          '<blockquote style="margin:1em 0;padding:10px 16px;'
+          'border-left:3px solid #A84637;background:#F7EEE9;'
+          'color:#575149;border-radius:0 4px 4px 0;">'
+          '<p style="$bodyStyle">$inner</p></blockquote>',
+        );
+      } else if (list is String) {
+        final mark = list == 'checked'
+            ? '☑ '
+            : list == 'unchecked'
+                ? '☐ '
+                : list == 'ordered'
+                    ? '· '
+                    : '• ';
+        out.writeln('<p style="$bodyStyle">$mark$inner</p>');
+      } else if (inner.isNotEmpty) {
+        out.writeln('<p style="$bodyStyle">$inner</p>');
+      }
+    }
+    out.writeln(
+      '<p style="margin:32px 0 0;padding-top:12px;border-top:1px solid #E3DAC8;'
+      'font-size:11px;color:#8D8576;">${_esc(_exportedOn(DateTime.now()))}</p>',
+    );
+    return out.toString();
+  }
+
   Future<String> html(Note note) async {
     final parser = _DeltaParser(note);
     await parser.parse(store);
@@ -705,6 +1068,9 @@ class NoteExporter {
       ul,ol { padding-left: 1.6em; margin:.4em 0 .9em; }
       img { max-width:100%; border-radius:6px; margin:10px 0; }
       hr { border:none; border-top:1px solid #E3DAC8; margin:26px 0; }
+      .tn-table { border-collapse:collapse; width:100%; margin:14px 0; }
+      .tn-table th, .tn-table td { border:1px solid #E3DAC8; padding:6px 8px; text-align:left; }
+      .tn-table th { background:#F1EDE4; font-weight:600; }
       a { color:#56697D; text-decoration:underline; text-underline-offset:2px; }
       .huazi { font-family:"LXGW WenKai","KaiTi",serif; font-size:30px; letter-spacing:1.5px;
         background: linear-gradient(92deg,#9E3F32,#D08A66,#8E3227); -webkit-background-clip:text;
@@ -738,6 +1104,11 @@ class NoteExporter {
             ? ''
             : ' class="language-${_esc(language)}"';
         c.writeln('<pre><code$cls>${_esc(code)}</code></pre>');
+        continue;
+      }
+      if (block.table != null) {
+        closeList();
+        c.writeln(_htmlTable(block.table!));
         continue;
       }
       final text = StringBuffer();
@@ -896,6 +1267,48 @@ class NoteExporter {
     }
     b.write('</w:rPr>');
     return b.toString();
+  }
+
+  String _docxTable(TableData table) {
+    final columns = table.rows.fold<int>(
+      1,
+      (width, row) => row.length > width ? row.length : width,
+    );
+    final cellWidth = (9000 / columns).round();
+    const border = '<w:top w:val="single" w:sz="4" w:color="D3C7B0"/>'
+        '<w:left w:val="single" w:sz="4" w:color="D3C7B0"/>'
+        '<w:bottom w:val="single" w:sz="4" w:color="D3C7B0"/>'
+        '<w:right w:val="single" w:sz="4" w:color="D3C7B0"/>'
+        '<w:insideH w:val="single" w:sz="4" w:color="D3C7B0"/>'
+        '<w:insideV w:val="single" w:sz="4" w:color="D3C7B0"/>';
+    final out = StringBuffer(
+      '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>'
+      '<w:tblBorders>$border</w:tblBorders></w:tblPr><w:tblGrid>',
+    );
+    for (var i = 0; i < columns; i++) {
+      out.write('<w:gridCol w:w="$cellWidth"/>');
+    }
+    out.write('</w:tblGrid>');
+    for (var row = 0; row < table.rows.length; row++) {
+      final header = table.header && row == 0;
+      out.write('<w:tr>');
+      for (final cell in table.rows[row]) {
+        out.write(
+            '<w:tc><w:tcPr><w:tcW w:w="$cellWidth" w:type="dxa"/>'
+            '${header ? '<w:shd w:val="clear" w:fill="F1EDE4"/>' : ''}'
+            '</w:tcPr><w:p><w:r><w:rPr>'
+            '<w:rFonts w:ascii="Noto Sans SC" w:hAnsi="Noto Sans SC" '
+            'w:eastAsia="Noto Sans SC"/>'
+            '${header ? '<w:b/>' : ''}<w:sz w:val="20"/></w:rPr>'
+            '<w:t xml:space="preserve">${_esc(cell)}</w:t></w:r></w:p></w:tc>',
+          );
+      }
+      out.write('</w:tr>');
+    }
+    out.write(
+      '</w:tbl><w:p><w:pPr><w:spacing w:after="120"/></w:pPr></w:p>',
+    );
+    return out.toString();
   }
 
   String _docxCodeBlock(_Block block) {
@@ -1104,6 +1517,61 @@ double _imageFactor(Map<String, dynamic> attrs) {
   return value.clamp(0.2, 1.0);
 }
 
+String _wechatTable(TableData table) {
+  final out = StringBuffer(
+    '<table style="border-collapse:collapse;width:100%;margin:14px 0;'
+    'font-size:14px;">',
+  );
+  for (var row = 0; row < table.rows.length; row++) {
+    final header = table.header && row == 0;
+    final tag = header ? 'th' : 'td';
+    out.write('<tr>');
+    for (final cell in table.rows[row]) {
+      out.write(
+        '<$tag style="border:1px solid #E3DAC8;padding:6px 8px;'
+        'text-align:left;${header ? 'background:#F1EDE4;' : ''}">'
+        '${const HtmlEscape().convert(cell)}</$tag>',
+      );
+    }
+    out.write('</tr>');
+  }
+  out.write('</table>');
+  return out.toString();
+}
+
+String _htmlTable(TableData table) {
+  final out = StringBuffer('<table class="tn-table">');
+  for (var row = 0; row < table.rows.length; row++) {
+    final header = table.header && row == 0;
+    final tag = header ? 'th' : 'td';
+    out.write('<tr>');
+    for (final cell in table.rows[row]) {
+      out.write('<$tag>${const HtmlEscape().convert(cell)}</$tag>');
+    }
+    out.write('</tr>');
+  }
+  out.write('</table>');
+  return out.toString();
+}
+
+String _mdTable(TableData table) {
+  final columns = table.rows.fold<int>(
+    1,
+    (width, row) => row.length > width ? row.length : width,
+  );
+  final header = table.header
+      ? table.rows.first
+      : List<String>.filled(columns, '');
+  final body = table.header ? table.rows.skip(1) : table.rows;
+  final out = StringBuffer()
+    ..writeln('| ${header.join(' | ')} |')
+    ..writeln('| ${List<String>.filled(columns, '---').join(' | ')} |');
+  for (final row in body) {
+    out.writeln('| ${row.join(' | ')} |');
+  }
+  return out.toString().trimRight();
+}
+
 String _imageAlign(Map<String, dynamic> attrs) {
   final raw = attrs['imageAlign']?.toString();
   return raw == 'center' || raw == 'right' ? raw! : 'left';
@@ -1133,6 +1601,7 @@ class _Block {
     this.isDivider = false,
     this.code,
     this.codeLanguage = '',
+    this.table,
   });
 
   final List<_Run> runs;
@@ -1142,6 +1611,7 @@ class _Block {
   /// 非空表示这是一个代码块（自定义 embed 或合并后的旧版行属性代码块）。
   final String? code;
   final String codeLanguage;
+  final TableData? table;
 
   bool get isCode => code != null || attrs['code-block'] == true;
 }
@@ -1216,6 +1686,15 @@ class _DeltaParser {
               codeLanguage: code.language,
             ),
           );
+          continue;
+        }
+        final table = TableData.fromRaw(insert[tableKey]);
+        if (table != null) {
+          if (runs.isNotEmpty) {
+            blocks.add(_Block(runs: runs, attrs: const {}));
+            runs = <_Run>[];
+          }
+          blocks.add(_Block(runs: const [], attrs: const {}, table: table));
           continue;
         }
         if (insert['image'] is String) {
@@ -1320,6 +1799,15 @@ class _DeltaParser {
                 codeLanguage: code.language,
               ),
             );
+            continue;
+          }
+          final table = TableData.fromRaw(insert[tableKey]);
+          if (table != null) {
+            if (runs.isNotEmpty) {
+              blocks.add(_Block(runs: runs, attrs: const {}));
+              runs = <_Run>[];
+            }
+            blocks.add(_Block(runs: const [], attrs: const {}, table: table));
             continue;
           }
           if (insert['image'] is String) {

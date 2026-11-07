@@ -17,7 +17,10 @@ import '../../core/i18n.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
 import '../../data/models.dart';
+import '../../data/repository.dart';
 import '../../state/app_state.dart';
+import 'code_block.dart';
+import 'image_embed.dart';
 
 /// 文案以中文为源，英文放在 [_en] 里。
 const Map<String, String> _en = <String, String>{
@@ -64,51 +67,75 @@ class _Paper {
   const _Paper({
     required this.bg,
     required this.surface,
+    required this.surfaceAlt,
     required this.ink,
     required this.soft,
     required this.accent,
     required this.line,
+    required this.blue,
+    required this.sage,
+    required this.gold,
   });
 
   final Color bg;
   final Color surface;
+  final Color surfaceAlt;
   final Color ink;
   final Color soft;
   final Color accent;
   final Color line;
+  final Color blue;
+  final Color sage;
+  final Color gold;
 
   static _Paper of(NoteImageTheme theme) => switch (theme) {
     NoteImageTheme.paper => const _Paper(
       bg: Color(0xFFF4EDDF),
       surface: Color(0xFFFFFBF3),
+      surfaceAlt: Color(0xFFEDE5D6),
       ink: Color(0xFF211E19),
       soft: Color(0xFF6F675B),
       accent: Color(0xFFA84637),
       line: Color(0xFFDFD2BC),
+      blue: Color(0xFF56697D),
+      sage: Color(0xFF6F806C),
+      gold: Color(0xFFA8824B),
     ),
     NoteImageTheme.ink => const _Paper(
       bg: Color(0xFF171411),
       surface: Color(0xFF1E1A16),
+      surfaceAlt: Color(0xFF24211C),
       ink: Color(0xFFEDE5D6),
       soft: Color(0xFFA59C8C),
       accent: Color(0xFFD38172),
       line: Color(0xFF3A342B),
+      blue: Color(0xFF8AA0B8),
+      sage: Color(0xFF93A38E),
+      gold: Color(0xFFC9A46C),
     ),
     NoteImageTheme.rose => const _Paper(
       bg: Color(0xFFF1E3DD),
       surface: Color(0xFFFBF2ED),
+      surfaceAlt: Color(0xFFEAD9D2),
       ink: Color(0xFF392326),
       soft: Color(0xFF7F6363),
       accent: Color(0xFF9A4F50),
       line: Color(0xFFE1CBC4),
+      blue: Color(0xFF5E6E82),
+      sage: Color(0xFF6E8069),
+      gold: Color(0xFFA87B4A),
     ),
     NoteImageTheme.sage => const _Paper(
       bg: Color(0xFFE8EDE3),
       surface: Color(0xFFF5F8F1),
+      surfaceAlt: Color(0xFFDDE5D7),
       ink: Color(0xFF263229),
       soft: Color(0xFF667263),
       accent: Color(0xFF5F7464),
       line: Color(0xFFCED9C8),
+      blue: Color(0xFF566B7E),
+      sage: Color(0xFF5F7464),
+      gold: Color(0xFF9C7A43),
     ),
   };
 }
@@ -122,13 +149,14 @@ Future<void> showPngExport(BuildContext context) async {
   await showDialog<void>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.40),
-    builder: (_) => _PngDialog(note: note),
+    builder: (_) => _PngDialog(note: note, store: state.store),
   );
 }
 
 class _PngDialog extends StatefulWidget {
-  const _PngDialog({required this.note});
+  const _PngDialog({required this.note, required this.store});
   final Note note;
+  final NoteStore store;
 
   @override
   State<_PngDialog> createState() => _PngDialogState();
@@ -152,9 +180,41 @@ class _PngDialogState extends State<_PngDialog> {
   bool _autoPages = true;
   List<double> _cuts = const [];
 
+  /// 正文里引用到的图片，一次读进来；图片本身也要进 PNG。
+  Map<String, Uint8List> _images = const {};
+  late final Future<void> _imagesReady;
+
   @override
   void initState() {
     super.initState();
+    _imagesReady = _loadImages();
+    _scheduleMeasure();
+  }
+
+  Future<void> _loadImages() async {
+    final paths = <String>{};
+    for (final op in widget.note.delta) {
+      if (op is! Map) continue;
+      final insert = op['insert'];
+      if (insert is! Map) continue;
+      final path = insert['image'];
+      if (path is String && path.isNotEmpty) paths.add(path);
+    }
+    if (paths.isEmpty) return;
+    final loaded = <String, Uint8List>{};
+    for (final path in paths) {
+      final bytes = await widget.store.readAsset(path);
+      if (bytes != null) loaded[path] = bytes;
+    }
+    if (!mounted) return;
+    // 先解码，免得 toImage 时图片还没画上去。
+    for (final bytes in loaded.values) {
+      try {
+        await precacheImage(MemoryImage(bytes), context);
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() => _images = loaded);
     _scheduleMeasure();
   }
 
@@ -321,6 +381,7 @@ class _PngDialogState extends State<_PngDialog> {
     if (_saving) return;
     setState(() => _saving = true);
     try {
+      await _imagesReady;
       await WidgetsBinding.instance.endOfFrame;
       final object = _boundary.currentContext?.findRenderObject();
       if (object is! RenderRepaintBoundary) return;
@@ -516,6 +577,7 @@ class _PngDialogState extends State<_PngDialog> {
                                     showMeta: _showMeta,
                                     showTags: _showTags,
                                     lineKeys: _lineKeys,
+                                    images: _images,
                                   ),
                                 ),
                                 for (var i = 0; i < _cuts.length; i++)
@@ -894,6 +956,7 @@ class NoteImageCard extends StatelessWidget {
     this.showMeta = true,
     this.showTags = true,
     this.lineKeys,
+    this.images = const {},
     super.key,
   });
 
@@ -906,12 +969,15 @@ class NoteImageCard extends StatelessWidget {
   /// 只给导出对话框用：给每一段挂一个 key，方便量分页断点。
   final NoteImageLineKeys? lineKeys;
 
+  /// 文档里引用的图片，路径 → 字节。没有时退回「［图片］」。
+  final Map<String, Uint8List> images;
+
   @override
   Widget build(BuildContext context) {
     final paper = _Paper.of(theme);
     final scale = (width / 520).clamp(0.6, 1.0);
     final title = note.title.trim().isEmpty ? _t('无题') : note.title.trim();
-    final lines = _Lines(note.delta, paper, scale).parse();
+    final lines = _Lines(note.delta).parse();
     final date = dateLabel(note.createdAt);
     return Container(
       width: width,
@@ -1083,38 +1149,51 @@ class NoteImageCard extends StatelessWidget {
   }
 
   Widget _lineView(_Line line, _Paper paper, double scale, [Key? key]) {
-    final header = int.tryParse(line.header ?? '');
-    final base = TextStyle(
-      fontFamily: 'NotoSerifSC',
-      fontSize: 14.5 * scale,
-      height: 1.9,
-      color: paper.ink,
+    return Padding(
+      key: key,
+      padding: EdgeInsets.only(
+        left: (line.quote ? 13 : 0) * scale,
+        bottom: (line.kind == _LineKind.text && line.header == null ? 10 : 14) *
+            scale,
+      ),
+      child: switch (line.kind) {
+        _LineKind.code => _codeView(line, paper, scale),
+        _LineKind.divider => _dividerView(paper, scale),
+        _LineKind.image => _imageView(line, paper, scale),
+        _LineKind.text => _textView(line, paper, scale),
+      },
     );
-    final style = header == null
-        ? base
-        : base.copyWith(
-            fontFamily: 'WenKai',
-            fontSize:
-                (header == 1
-                    ? 26
-                    : header == 2
-                    ? 21
-                    : 17) *
-                scale,
-            height: 1.45,
-            fontWeight: FontWeight.w600,
-          );
+  }
+
+  Widget _textView(_Line line, _Paper paper, double scale) {
+    final header = int.tryParse(line.header ?? '');
+    final base = _blockStyle(header, line.quote, paper, scale);
+    final checked = line.list == 'checked';
+    final prefix = _listPrefix(line);
     final spans = <InlineSpan>[
-      if (line.list != null)
+      if (prefix != null)
         TextSpan(
-          text: '·  ',
-          style: style.copyWith(color: paper.accent),
+          text: prefix,
+          style: base.copyWith(
+            color: line.list == 'unchecked' ? paper.soft : paper.accent,
+            fontWeight: FontWeight.w500,
+          ),
         ),
-      ...line.spans,
+      for (final run in line.runs)
+        TextSpan(
+          text: run.text,
+          style: _inlineStyle(
+            base,
+            run.attrs,
+            paper,
+            scale,
+            checked: checked,
+          ),
+        ),
     ];
     final text = Text.rich(
       TextSpan(children: spans),
-      style: style,
+      style: base,
       textAlign: switch (line.align) {
         'center' => TextAlign.center,
         'right' => TextAlign.right,
@@ -1122,76 +1201,426 @@ class NoteImageCard extends StatelessWidget {
         _ => TextAlign.left,
       },
     );
+    if (line.quote) {
+      return Container(
+        padding: EdgeInsets.fromLTRB(12 * scale, 8 * scale, 12 * scale, 8 * scale),
+        decoration: BoxDecoration(
+          color: Color.alphaBlend(
+            paper.accent.withValues(alpha: 0.10),
+            paper.bg,
+          ),
+          borderRadius: BorderRadius.circular(3 * scale),
+          border: Border(
+            left: BorderSide(
+              color: paper.accent.withValues(alpha: 0.55),
+              width: 2 * scale,
+            ),
+          ),
+        ),
+        child: text,
+      );
+    }
+    final indent = (line.list != null ? 16 : 0) + line.indent * 18;
+    if (indent == 0) return text;
     return Padding(
-      key: key,
-      padding: EdgeInsets.only(
-        left: line.quote ? 13 * scale : 0,
-        bottom: (header == null ? 10 : 14) * scale,
+      padding: EdgeInsets.only(left: indent * scale),
+      child: text,
+    );
+  }
+
+  TextStyle _blockStyle(
+    int? header,
+    bool quote,
+    _Paper paper,
+    double scale,
+  ) {
+    var family = 'NotoSansSC';
+    var size = 14.5 * scale;
+    var height = 1.9;
+    var weight = FontWeight.w400;
+    var spacing = 0.15;
+    if (header != null) {
+      family = header == 3 ? 'NotoSansSC' : 'WenKai';
+      size = (header == 1 ? 30 : header == 2 ? 24 : 20) * scale;
+      height = header == 3 ? 1.5 : 1.45;
+      weight = FontWeight.w600;
+      spacing = header == 3 ? 0.1 : 0.5;
+    }
+    return TextStyle(
+      fontFamily: family,
+      fontSize: size,
+      height: height,
+      fontWeight: weight,
+      letterSpacing: spacing,
+      color: quote ? paper.soft : paper.ink,
+    );
+  }
+
+  TextStyle _inlineStyle(
+    TextStyle base,
+    Map<String, dynamic> attrs,
+    _Paper paper,
+    double scale, {
+    bool checked = false,
+  }) {
+    if (attrs.isEmpty && !checked) return base;
+    var style = base;
+    final font = attrs['font']?.toString();
+    if (font != null && font.isNotEmpty) {
+      if (font.startsWith('huazi:')) {
+        style = style.copyWith(fontFamily: 'WenKai');
+      } else if (font == 'style:thin' || font == 'NotoSansSCLight') {
+        style = style.copyWith(
+          fontFamily: 'NotoSansSC',
+          fontWeight: FontWeight.w300,
+        );
+      } else if (font == 'Serif') {
+        style = style.copyWith(fontFamily: 'WenKai');
+      } else {
+        style = style.copyWith(fontFamily: font);
+      }
+    }
+    final size = attrs['size']?.toString();
+    if (size != null) {
+      final target = switch (size) {
+        'small' => 13.0,
+        'large' => 22.0,
+        'huge' => 30.0,
+        _ => double.tryParse(size),
+      };
+      if (target != null) {
+        // 编辑器正文是 17，按同一比例放大，保留正文与标题的相对关系。
+        style = style.copyWith(fontSize: 14.5 * scale * (target / 17));
+      }
+    }
+    if (attrs['bold'] == true) {
+      style = style.copyWith(fontWeight: FontWeight.w700);
+    }
+    if (attrs['italic'] == true) {
+      style = style.copyWith(fontStyle: FontStyle.italic);
+    }
+    var decoration = style.decoration ?? TextDecoration.none;
+    if (attrs['underline'] == true) {
+      decoration = decoration == TextDecoration.none
+          ? TextDecoration.underline
+          : TextDecoration.combine([decoration, TextDecoration.underline]);
+    }
+    if (attrs['strike'] == true || checked) {
+      decoration = decoration == TextDecoration.none
+          ? TextDecoration.lineThrough
+          : TextDecoration.combine([decoration, TextDecoration.lineThrough]);
+    }
+    if (decoration != TextDecoration.none) {
+      style = style.copyWith(
+        decoration: decoration,
+        decorationColor: checked ? paper.soft : style.color,
+      );
+    }
+    if (attrs['code'] == true) {
+      style = style.copyWith(
+        fontFamily: 'SourceHanMono',
+        fontFamilyFallback: const ['NotoSansSC', 'monospace'],
+        fontSize: 12 * scale,
+        height: 1.7,
+        color: paper.accent,
+        backgroundColor: paper.surfaceAlt,
+        letterSpacing: 0,
+      );
+    }
+    final color = attrs['color']?.toString();
+    if (color != null && !checked) {
+      final parsed = parseHex(color);
+      if (parsed != null) style = style.copyWith(color: parsed);
+    }
+    final background = attrs['background']?.toString();
+    if (background != null) {
+      final parsed = parseHex(background);
+      if (parsed != null) style = style.copyWith(backgroundColor: parsed);
+    }
+    if (attrs['link'] != null) {
+      style = style.copyWith(
+        color: paper.blue,
+        decoration: TextDecoration.underline,
+        decorationColor: paper.blue,
+      );
+    }
+    return style;
+  }
+
+  String? _listPrefix(_Line line) => switch (line.list) {
+    null => null,
+    'ordered' => '${line.listNumber ?? 1}.  ',
+    'checked' => '☑  ',
+    'unchecked' => '☐  ',
+    _ => '•  ',
+  };
+
+  Widget _codeView(_Line line, _Paper paper, double scale) {
+    final base = TextStyle(
+      fontFamily: 'SourceHanMono',
+      fontFamilyFallback: const ['NotoSansSC', 'monospace'],
+      fontSize: 12 * scale,
+      height: 1.75,
+      color: paper.soft,
+    );
+    final language = line.language ?? '';
+    return Container(
+      width: double.infinity,
+      margin: EdgeInsets.symmetric(vertical: 6 * scale),
+      decoration: BoxDecoration(
+        color: paper.surfaceAlt,
+        borderRadius: BorderRadius.circular(10 * scale),
+        border: Border.all(color: paper.line),
       ),
-      child: line.quote
-          ? Container(
-              padding: EdgeInsets.only(left: 12 * scale),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (language.isNotEmpty)
+            Container(
+              padding: EdgeInsets.fromLTRB(
+                12 * scale,
+                5 * scale,
+                12 * scale,
+                5 * scale,
+              ),
               decoration: BoxDecoration(
-                border: Border(
-                  left: BorderSide(
-                    color: paper.accent.withValues(alpha: 0.5),
-                    width: 2,
+                color: paper.surface,
+                border: Border(bottom: BorderSide(color: paper.line)),
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 7 * scale,
+                    vertical: 2 * scale,
+                  ),
+                  decoration: BoxDecoration(
+                    color: paper.accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(5 * scale),
+                  ),
+                  child: Text(
+                    codeLanguageLabel(language),
+                    style: TextStyle(
+                      fontFamily: 'NotoSansSC',
+                      fontSize: 9 * scale,
+                      fontWeight: FontWeight.w500,
+                      color: paper.accent,
+                    ),
                   ),
                 ),
               ),
-              child: text,
-            )
-          : text,
+            ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              12 * scale,
+              9 * scale,
+              12 * scale,
+              11 * scale,
+            ),
+            child: Text.rich(
+              TextSpan(
+                children: codeHighlightSpans(
+                  line.code ?? '',
+                  language,
+                  base: base,
+                  theme: _codeTheme(paper),
+                ),
+                style: base,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Map<String, TextStyle> _codeTheme(_Paper paper) => {
+    'keyword': TextStyle(color: paper.accent, fontWeight: FontWeight.w600),
+    'built_in': TextStyle(color: paper.blue),
+    'type': TextStyle(color: paper.blue),
+    'literal': TextStyle(color: paper.gold),
+    'number': TextStyle(color: paper.gold),
+    'string': TextStyle(color: paper.sage),
+    'comment': TextStyle(color: paper.soft, fontStyle: FontStyle.italic),
+    'title': TextStyle(color: paper.ink, fontWeight: FontWeight.w600),
+    'attr': TextStyle(color: paper.accent),
+    'attribute': TextStyle(color: paper.blue),
+    'variable': TextStyle(color: paper.soft),
+    'meta': TextStyle(color: paper.soft),
+    'symbol': TextStyle(color: paper.gold),
+    'tag': TextStyle(color: paper.accent),
+    'name': TextStyle(color: paper.accent),
+    'selector-tag': TextStyle(color: paper.accent),
+    'selector-class': TextStyle(color: paper.blue),
+    'selector-id': TextStyle(color: paper.blue),
+  };
+
+  Widget _dividerView(_Paper paper, double scale) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 12 * scale),
+      child: Row(
+        children: [
+          Expanded(child: Container(height: 0.8, color: paper.line)),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 9 * scale),
+            child: Container(
+              width: 4 * scale,
+              height: 4 * scale,
+              decoration: BoxDecoration(
+                color: paper.accent,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          Expanded(child: Container(height: 0.8, color: paper.line)),
+        ],
+      ),
+    );
+  }
+
+  Widget _imageView(_Line line, _Paper paper, double scale) {
+    final bytes = images[line.imagePath];
+    if (bytes == null) {
+      return Text(
+        _t('［图片］'),
+        style: TextStyle(
+          fontFamily: 'NotoSansSC',
+          fontSize: 10 * scale,
+          color: paper.accent,
+        ),
+      );
+    }
+    final alignment = switch (line.imageAlign) {
+      'center' => Alignment.center,
+      'right' => Alignment.centerRight,
+      _ => Alignment.centerLeft,
+    };
+    final innerWidth = width - 84 * scale;
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 10 * scale),
+      child: Align(
+        alignment: alignment,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(6 * scale),
+          child: Image.memory(
+            bytes,
+            width: innerWidth * line.imageWidth.clamp(0.2, 1.0),
+            cacheWidth:
+                (innerWidth * line.imageWidth.clamp(0.2, 1.0) * scale)
+                    .round()
+                    .clamp(64, 4096),
+            fit: BoxFit.fitWidth,
+          ),
+        ),
+      ),
     );
   }
 }
 
+enum _LineKind { text, code, divider, image }
+
+class _Run {
+  const _Run(this.text, this.attrs);
+  final String text;
+  final Map<String, dynamic> attrs;
+}
+
 class _Line {
   _Line({
-    required this.spans,
+    this.kind = _LineKind.text,
+    this.runs = const [],
     this.header,
     this.quote = false,
     this.list,
+    this.listNumber,
     this.align = 'left',
+    this.indent = 0,
+    this.code,
+    this.language = '',
+    this.imagePath,
+    this.imageWidth = 1,
+    this.imageAlign = 'left',
   });
-  final List<InlineSpan> spans;
+
+  final _LineKind kind;
+  final List<_Run> runs;
   final String? header;
   final bool quote;
   final String? list;
+  final int? listNumber;
   final String align;
+  final int indent;
+  final String? code;
+  final String? language;
+  final String? imagePath;
+  final double imageWidth;
+  final String imageAlign;
 }
 
 class _Lines {
-  _Lines(this.delta, this.paper, this.scale);
+  _Lines(this.delta);
   final List<dynamic> delta;
-  final _Paper paper;
-  final double scale;
 
   List<_Line> parse() {
     final lines = <_Line>[];
-    var spans = <InlineSpan>[];
+    var runs = <_Run>[];
     String? header;
     var quote = false;
     String? list;
     var align = 'left';
+    var indent = 0;
+    var legacyCode = false;
+    var hadBreak = false;
+    var ordered = 0;
 
     void flush() {
-      if (spans.isNotEmpty || header != null || quote || list != null) {
+      final plain = runs.map((r) => r.text).join();
+      if (legacyCode) {
+        if (plain.trim().isNotEmpty) {
+          lines.add(_Line(kind: _LineKind.code, code: plain));
+        }
+      } else if (runs.isNotEmpty ||
+          header != null ||
+          quote ||
+          list != null ||
+          hadBreak) {
+        int? number;
+        if (list == 'ordered') {
+          ordered++;
+          number = ordered;
+        } else {
+          ordered = 0;
+        }
         lines.add(
           _Line(
-            spans: List.of(spans),
+            runs: List.of(runs),
             header: header,
             quote: quote,
             list: list,
+            listNumber: number,
             align: align,
+            indent: indent,
           ),
         );
       }
-      spans = <InlineSpan>[];
+      runs = <_Run>[];
       header = null;
       quote = false;
       list = null;
       align = 'left';
+      indent = 0;
+      legacyCode = false;
+      hadBreak = false;
+    }
+
+    void readBlock(Map<String, dynamic> attrs) {
+      header = attrs['header']?.toString();
+      quote = attrs['blockquote'] == true;
+      list = attrs['list']?.toString();
+      align = attrs['align']?.toString() ?? 'left';
+      indent = int.tryParse(attrs['indent']?.toString() ?? '') ?? 0;
+      legacyCode = attrs['code-block'] == true;
     }
 
     for (final op in delta) {
@@ -1204,92 +1633,75 @@ class _Lines {
         final parts = insert.split('\n');
         for (var i = 0; i < parts.length; i++) {
           if (parts[i].isNotEmpty) {
-            spans.add(TextSpan(text: parts[i], style: _inline(attrs)));
+            runs.add(_Run(parts[i], attrs));
           }
           if (i < parts.length - 1) {
-            header = attrs['header']?.toString();
-            quote = attrs['blockquote'] == true;
-            list = attrs['list']?.toString();
-            align = attrs['align']?.toString() ?? 'left';
+            readBlock(attrs);
+            hadBreak = true;
             flush();
           }
         }
-      } else if (insert is Map && insert['image'] is String) {
-        spans.add(
-          TextSpan(
-            text: _t('［图片］'),
-            style: TextStyle(
-              fontFamily: 'NotoSansSC',
-              fontSize: 10 * scale,
-              color: paper.accent,
-            ),
+        continue;
+      }
+      if (insert is! Map) continue;
+      final code = CodeBlockData.fromRaw(insert[codeBlockKey]);
+      if (code != null) {
+        flush();
+        lines.add(
+          _Line(
+            kind: _LineKind.code,
+            code: code.code,
+            language: code.language,
           ),
         );
+        continue;
+      }
+      final path = insert['image'];
+      if (path is String && path.isNotEmpty) {
+        flush();
+        final width = double.tryParse(attrs[imageWidthKey]?.toString() ?? '');
+        lines.add(
+          _Line(
+            kind: _LineKind.image,
+            imagePath: path,
+            imageWidth: (width ?? 1).clamp(0.2, 1.0),
+            imageAlign: switch (attrs[imageAlignKey]?.toString()) {
+              'center' => 'center',
+              'right' => 'right',
+              _ => 'left',
+            },
+          ),
+        );
+        continue;
+      }
+      if (insert['divider'] != null) {
+        flush();
+        lines.add(_Line(kind: _LineKind.divider));
       }
     }
     flush();
-    return lines;
-  }
 
-  TextStyle? _inline(Map<String, dynamic> attrs) {
-    if (attrs.isEmpty) return null;
-    var style = TextStyle(
-      fontFamily: 'NotoSerifSC',
-      fontSize: 14.5 * scale,
-      height: 1.9,
-      color: paper.ink,
-    );
-    final font = attrs['font']?.toString();
-    if (font != null && font.isNotEmpty) {
-      style = style.copyWith(fontFamily: font);
+    // 旧版按行存储的代码块会拆成多行，这里接回去。
+    final merged = <_Line>[];
+    for (final line in lines) {
+      if (line.kind == _LineKind.code &&
+          merged.isNotEmpty &&
+          merged.last.kind == _LineKind.code) {
+        final previous = merged.removeLast();
+        merged.add(
+          _Line(
+            kind: _LineKind.code,
+            code: '${previous.code}\n${line.code}',
+            language: (previous.language ?? '').isNotEmpty
+                ? previous.language!
+                : (line.language ?? ''),
+          ),
+        );
+      } else {
+        merged.add(line);
+      }
     }
-    final size = attrs['size']?.toString();
-    if (size != null) {
-      style = style.copyWith(
-        fontSize:
-            (size == 'huge' || size == '40'
-                ? 24
-                : size == 'large'
-                ? 19
-                : 16) *
-            scale,
-        height: 1.35,
-      );
-    }
-    if (attrs['bold'] == true) {
-      style = style.copyWith(fontWeight: FontWeight.w700);
-    }
-    if (attrs['italic'] == true) {
-      style = style.copyWith(fontStyle: FontStyle.italic);
-    }
-    if (attrs['underline'] == true) {
-      style = style.copyWith(decoration: TextDecoration.underline);
-    }
-    if (attrs['strike'] == true) {
-      style = style.copyWith(
-        decoration: TextDecoration.combine([
-          if (style.decoration != null) style.decoration!,
-          TextDecoration.lineThrough,
-        ]),
-      );
-    }
-    final color = attrs['color']?.toString();
-    if (color != null) {
-      final parsed = parseHex(color);
-      if (parsed != null) style = style.copyWith(color: parsed);
-    }
-    final background = attrs['background']?.toString();
-    if (background != null) {
-      final parsed = parseHex(background);
-      if (parsed != null) style = style.copyWith(backgroundColor: parsed);
-    }
-    if (attrs['link'] != null) {
-      style = style.copyWith(
-        color: paper.accent,
-        decoration: TextDecoration.underline,
-      );
-    }
-    return style;
+    return merged;
   }
 }
 

@@ -44,21 +44,43 @@ Future<void> main() async {
   }
 
   final state = AppState();
-  try {
-    await state.init();
-  } catch (e) {
-    state.startupError = e.toString();
-  }
-  // 任务栏上显示的名字也跟着语言走；窗口本身无边框，标题只对系统可见。
-  if (Platform.isWindows) {
-    await windowManager.setTitle(
-      I18n.lang == AppLang.en ? 'ThisNote' : '此记 · ThisNote',
-    );
-  }
+  // 先让纸出现，再在首帧后读数据；启动不再被 library 解析和字体注册卡住。
   runApp(
     ChangeNotifierProvider.value(
       value: state,
       child: const ThisNoteApp(),
     ),
   );
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    try {
+      await state.init();
+    } catch (e) {
+      state.reportStartupError(e);
+    }
+    if (Platform.isAndroid) {
+      const channel = MethodChannel('thisnote/share');
+      String? pending;
+      channel.setMethodCallHandler((call) async {
+        if (call.method == 'sharedText' && call.arguments is String) {
+          final text = call.arguments as String;
+          if (state.ready) {
+            await state.importSharedText(text);
+          } else {
+            pending = text;
+          }
+        }
+      });
+      final initial = await channel.invokeMethod<String>('getInitialShare');
+      final text = (initial != null && initial.trim().isNotEmpty)
+          ? initial
+          : pending;
+      if (text != null) await state.importSharedText(text);
+    }
+    // 任务栏上显示的名字也跟着语言走；窗口本身无边框，标题只对系统可见。
+    if (Platform.isWindows) {
+      await windowManager.setTitle(
+        I18n.lang == AppLang.en ? 'ThisNote' : '此记 · ThisNote',
+      );
+    }
+  });
 }

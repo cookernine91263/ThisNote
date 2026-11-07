@@ -34,7 +34,10 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
-    final state = context.watch<AppState>();
+    final state = context.read<AppState>();
+    context.select<AppState, (int, int)>(
+      (value) => (value.settingsRevision, value.dataRevision),
+    );
     final s = state.settings;
     return SafeArea(
       bottom: false,
@@ -121,9 +124,15 @@ class SettingsPage extends StatelessWidget {
                           label: entry.$3,
                           onTap: () {},
                           onTapPosition: (origin) {
-                            // 点的就是当前主题：不播那段看不见的扩散，
-                            // 也不让遮罩平白挡掉半秒多的输入。
-                            if (s.themeMode == entry.$1) return;
+                            // 点的就是当前主题，或实际明暗没变（系统深色下
+                            // 点墨夜）：不播那段看不见的扩散，也不让遮罩
+                            // 平白挡掉半秒多的输入；模式本身仍要写入设置。
+                            if (s.themeMode == entry.$1 ||
+                                brightnessOfMode(context, entry.$1) ==
+                                    Theme.of(context).brightness) {
+                              state.setThemeMode(entry.$1);
+                              return;
+                            }
                             ThemeReveal.reveal(
                               context: context,
                               globalOrigin: origin,
@@ -255,7 +264,8 @@ class SettingsPage extends StatelessWidget {
                     snap: 0.01,
                     transform: (v) => v * 100,
                     inverse: (v) => v / 100,
-                    onChanged: (v) => state.updateSettings((x) => x.uiScale = v),
+                    onChanged: (v) => state.previewSettings((x) => x.uiScale = v),
+                    onChangeEnd: state.persistSettingsNow,
                   ),
                   const SizedBox(height: 10),
                   _SettingSwitch(
@@ -283,7 +293,8 @@ class SettingsPage extends StatelessWidget {
                     decimals: 0,
                     transform: (v) => 17 * v,
                     inverse: (v) => v / 17,
-                    onChanged: (v) => state.updateSettings((x) => x.editorScale = v),
+                    onChanged: (v) => state.previewSettings((x) => x.editorScale = v),
+                    onChangeEnd: state.persistSettingsNow,
                   ),
                   _SliderSetting(
                     label: _t('行距'),
@@ -293,7 +304,8 @@ class SettingsPage extends StatelessWidget {
                     display: s.lineHeight.toStringAsFixed(2),
                     decimals: 2,
                     snap: 0.05,
-                    onChanged: (v) => state.updateSettings((x) => x.lineHeight = v),
+                    onChanged: (v) => state.previewSettings((x) => x.lineHeight = v),
+                    onChangeEnd: state.persistSettingsNow,
                   ),
                   _SliderSetting(
                     label: _t('段间距'),
@@ -305,7 +317,8 @@ class SettingsPage extends StatelessWidget {
                     decimals: 0,
                     snap: 1,
                     onChanged: (v) =>
-                        state.updateSettings((x) => x.paragraphGap = v),
+                        state.previewSettings((x) => x.paragraphGap = v),
+                    onChangeEnd: state.persistSettingsNow,
                   ),
                   _SliderSetting(
                     label: _t('字间距'),
@@ -316,7 +329,8 @@ class SettingsPage extends StatelessWidget {
                     decimals: 2,
                     snap: 0.05,
                     onChanged: (v) =>
-                        state.updateSettings((x) => x.letterSpacing = v),
+                        state.previewSettings((x) => x.letterSpacing = v),
+                    onChangeEnd: state.persistSettingsNow,
                   ),
                   _SliderSetting(
                     label: _t('页宽'),
@@ -327,7 +341,32 @@ class SettingsPage extends StatelessWidget {
                     suffix: 'px',
                     decimals: 0,
                     snap: 10,
-                    onChanged: (v) => state.updateSettings((x) => x.editorWidth = v),
+                    onChanged: (v) => state.previewSettings((x) => x.editorWidth = v),
+                    onChangeEnd: state.persistSettingsNow,
+                  ),
+                  const SizedBox(height: 10),
+                  _SettingSwitch(
+                    label: _t('打字机模式'),
+                    description: _t('光标停在纸的中央，文字一行行推上来'),
+                    value: s.typewriter,
+                    onChanged: (v) =>
+                        state.updateSettings((x) => x.typewriter = v),
+                  ),
+                  const SizedBox(height: 10),
+                  _SettingSwitch(
+                    label: _t('段落聚焦'),
+                    description: _t('只留下正在写的那一段，其余文字轻轻淡去'),
+                    value: s.paragraphFocus,
+                    onChanged: (v) =>
+                        state.updateSettings((x) => x.paragraphFocus = v),
+                  ),
+                  const SizedBox(height: 10),
+                  _SettingSwitch(
+                    label: _t('文风检查'),
+                    description: _t('标出口水词、重复词和过长的句子'),
+                    value: s.styleCheck,
+                    onChanged: (v) =>
+                        state.updateSettings((x) => x.styleCheck = v),
                   ),
                   const SizedBox(height: 8),
                   Container(
@@ -352,7 +391,11 @@ class SettingsPage extends StatelessWidget {
                         const SizedBox(height: 6),
                         Text(
                           _t('落笔即心安'),
-                          style: huaziTextStyle('huazi:zhu:m', dark: c.isDark),
+                          style: huaziTextStyle(
+                            'huazi:zhu:m',
+                            dark: c.isDark,
+                            accent: c.accent,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -391,7 +434,9 @@ class SettingsPage extends StatelessWidget {
                     suffix: _t('字'),
                     decimals: 0,
                     snap: 50,
-                    onChanged: (v) => state.setDailyGoal(v.round()),
+                    onChanged: (v) =>
+                        state.previewSettings((x) => x.dailyGoal = v.round()),
+                    onChangeEnd: state.persistSettingsNow,
                   ),
                   const SizedBox(height: 4),
                   Row(
@@ -428,7 +473,7 @@ class SettingsPage extends StatelessWidget {
                 children: [
                   _SettingSwitch(
                     label: _t('启动密码锁'),
-                    description: _t('4 位数字密码。忘记后无法找回，请谨慎开启。'),
+                    description: _t('4 位数字密码，只锁界面；笔记文件仍是明文。忘记后无法找回。'),
                     value: s.lockEnabled,
                     onChanged: (v) async {
                       if (v) {
@@ -577,7 +622,7 @@ class SettingsPage extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _t('此记 · ThisNote 1.3.1'),
+                              _t('此记 · ThisNote 2.0.0'),
                               style: TextStyle(
                                 fontFamily: 'NotoSansSC',
                                 fontSize: 12,
@@ -749,8 +794,8 @@ class SettingsPage extends StatelessWidget {
     final files = await openFiles(
       acceptedTypeGroups: [
         XTypeGroup(
-          label: _t('Markdown / 文本'),
-          extensions: const ['md', 'markdown', 'txt'],
+          label: _t('Markdown / 文本 / Word'),
+          extensions: const ['md', 'markdown', 'txt', 'docx'],
         ),
       ],
     );
@@ -760,11 +805,14 @@ class SettingsPage extends StatelessWidget {
     String? firstError;
     for (final file in files) {
       try {
-        final content = utf8.decode(
-          await file.readAsBytes(),
-          allowMalformed: true,
-        );
-        await state.importMarkdown(content: content, filename: file.name);
+        final bytes = await file.readAsBytes();
+        if (file.name.toLowerCase().endsWith('.docx')) {
+          final note = await state.importDocx(bytes, file.name);
+          if (note == null) throw const FormatException('DOCX');
+        } else {
+          final content = utf8.decode(bytes, allowMalformed: true);
+          await state.importMarkdown(content: content, filename: file.name);
+        }
         count++;
       } catch (e) {
         firstError ??= _t('{name}：{e}', {'name': file.name, 'e': e});
@@ -1001,11 +1049,14 @@ class _Card extends StatelessWidget {
               Expanded(
                 child: Text(
                   subtitle,
-                  maxLines: 1,
+                  // 英文副标题通常比中文长一倍，允许换行，避免被省略成
+                  // “Low-saturation paper tones, easy-…”。
+                  maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontFamily: 'NotoSansSC',
                     fontSize: 9.5,
+                    height: 1.35,
                     color: c.inkMuted,
                   ),
                 ),
@@ -1139,6 +1190,7 @@ class _SliderSetting extends StatelessWidget {
     required this.max,
     required this.display,
     required this.onChanged,
+    this.onChangeEnd,
     this.divisions,
     this.suffix = '',
     this.decimals = 0,
@@ -1159,6 +1211,7 @@ class _SliderSetting extends StatelessWidget {
   final double Function(double)? transform;
   final double Function(double)? inverse;
   final ValueChanged<double> onChanged;
+  final VoidCallback? onChangeEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -1196,6 +1249,7 @@ class _SliderSetting extends StatelessWidget {
                 max: max,
                 divisions: divisions,
                 onChanged: onChanged,
+                onChangeEnd: (_) => onChangeEnd?.call(),
               ),
             ),
           ),
@@ -1598,12 +1652,12 @@ class _SyncCardState extends State<_SyncCard> {
     final w = widget.state.settings.webdavSettings;
     return _Card(
       icon: LucideIcons.cloudUpload,
-      title: _t('WebDAV 同步'),
-      subtitle: _t('可选 · 自己的服务器或坚果云'),
+      title: _t('WebDAV 备份'),
+      subtitle: _t('可选 · 整包上传与恢复'),
       children: [
         _SettingSwitch(
           label: _t('启用 WebDAV'),
-          description: _t('本地优先，手动同步；不会上传到任何第三方服务。'),
+          description: _t('本地优先，手动上传整包备份；不会自动同步或合并。'),
           value: w.enabled,
           onChanged: (v) => widget.state.updateSettings((s) => s.webdavSettings.enabled = v),
         ),
@@ -1648,7 +1702,7 @@ class _SyncCardState extends State<_SyncCard> {
         Align(
           alignment: Alignment.centerLeft,
           child: Text(
-            _t('同步会在设置中手动触发，采用较新覆盖较旧；同名冲突会保留副本。'),
+            _t('上传与恢复都是整包操作；恢复前会先备份当前数据。'),
             style: TextStyle(
               fontFamily: 'NotoSansSC',
               fontSize: 9,
@@ -1676,7 +1730,7 @@ class _SyncCardState extends State<_SyncCard> {
             ),
             SoftButton(
               icon: LucideIcons.cloud,
-              label: _t('恢复最新'),
+              label: _t('恢复备份…'),
               dense: true,
               onPressed: () => _download(context),
             ),
@@ -1689,7 +1743,7 @@ class _SyncCardState extends State<_SyncCard> {
   bool _ready(BuildContext context) {
     final w = widget.state.settings.webdavSettings;
     if (!w.configured) {
-      showToast(context, _t('请先填写 WebDAV 地址与用户名，并启用同步'));
+      showToast(context, _t('请先填写 WebDAV 地址与用户名，并启用备份'));
       return false;
     }
     return true;
@@ -1779,16 +1833,57 @@ class _SyncCardState extends State<_SyncCard> {
       barrierDismissible: false,
       builder: (context) => const _Busy(),
     );
+    var busyOpen = true;
     try {
       final bytes = await service.download(target);
       final file = File(p.join(widget.state.store.root.path, 'webdav-restore.zip'));
       await file.writeAsBytes(bytes, flush: true);
+      final manifest = await widget.state.store.readBackupManifest(file.path);
+      final files = manifest?['files'];
+      final count = files is List ? files.length : null;
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        busyOpen = false;
+      }
+      if (count != null && context.mounted) {
+        final created = DateTime.tryParse(
+          manifest?['createdAt']?.toString() ?? '',
+        );
+        final ok2 = await showConfirm(
+          context,
+          title: _t('确认备份内容'),
+          message: _t(
+            '备份包含 {n} 个文件{date}。恢复前会先备份当前数据。',
+            {
+              'n': count,
+              'date': created == null ? '' : '，创建于 ${dateLabel(created)}',
+            },
+          ),
+          confirmLabel: _t('恢复'),
+          danger: true,
+        );
+        if (!ok2 || !context.mounted) {
+          await file.delete();
+          return;
+        }
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const _Busy(),
+        );
+        busyOpen = true;
+      }
       await widget.state.store.restoreBackup(file.path);
       await widget.state.reload();
-      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      if (busyOpen && context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        busyOpen = false;
+      }
       if (context.mounted) showToast(context, _t('已从 WebDAV 恢复'));
     } catch (e) {
-      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      if (busyOpen && context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
       if (context.mounted) showToast(context, _t('恢复失败：{e}', {'e': e}));
     }
   }
@@ -1820,7 +1915,7 @@ class _Busy extends StatelessWidget {
             ),
             const SizedBox(width: 14),
             Text(
-              _t('正在同步…'),
+              _t('正在处理备份…'),
               style: TextStyle(
                 fontFamily: 'NotoSansSC',
                 fontSize: 12,
@@ -1949,6 +2044,15 @@ const Map<String, String> _en = <String, String>{
   '正文会以 {n} 号字、{h} 倍行距排布。中文、English 与 日本語 都可以在同一页里安静地待着。':
       'Body text sets at {n} pt with {h}× line height. Chinese, English and Japanese all rest quietly on one page.',
   '写作目标': 'Writing goal',
+  '打字机模式': 'Typewriter mode',
+  '光标停在纸的中央，文字一行行推上来':
+      'Keep the caret in the middle; text rises line by line',
+  '段落聚焦': 'Paragraph focus',
+  '只留下正在写的那一段，其余文字轻轻淡去':
+      'Leave only the current paragraph clear',
+  '文风检查': 'Style check',
+  '标出口水词、重复词和过长的句子':
+      'Flag filler words, repetition and long sentences',
   '不是 KPI，只是给今天一个轻轻的落点':
       'Not a KPI — just a gentle landing spot for today',
   '每日目标': 'Daily goal',
@@ -1986,7 +2090,7 @@ const Map<String, String> _en = <String, String>{
   '印章颜色跟随强调色，自定义颜色也会一起变':
       'The seal follows your accent color, including custom colors',
   '一个安静的本地写作空间': 'A quiet local writing space',
-  '此记 · ThisNote 1.3.1': 'ThisNote 1.3.1',
+  '此记 · ThisNote 2.0.0': 'ThisNote 2.0.0',
   '内置字体：思源黑体 / 思源宋体 / 霞鹜文楷 /\n'
           '马善政毛笔 / 站酷小薇 / 思源细体 / 得意黑 / 思源等宽，\n'
           '均为 SIL Open Font License。中、英、日与假名可同页混排。':
@@ -2005,7 +2109,7 @@ const Map<String, String> _en = <String, String>{
       'Current data will be overwritten. A fresh backup is made first.',
   '恢复': 'Restore',
   '备份已恢复': 'Backup restored',
-  'Markdown / 文本': 'Markdown / Text',
+  'Markdown / 文本 / Word': 'Markdown / Text / Word',
   '导入了 {n} 篇，去「全部」里看看': 'Imported {n} notes — look under All',
   '没有可导入的内容': 'Nothing to import',
   '{name}：{e}': '{name}: {e}',
@@ -2054,22 +2158,22 @@ const Map<String, String> _en = <String, String>{
   '重新查看引导': 'Replay the tour',
   'Key 仅保存在本机设置文件中。':
       'The key is stored only in the local settings file.',
-  'WebDAV 同步': 'WebDAV sync',
-  '可选 · 自己的服务器或坚果云': 'Optional · Your own server or Nutstore',
+  'WebDAV 备份': 'WebDAV backup',
+  '可选 · 整包上传与恢复': 'Optional · Full backup upload and restore',
   '启用 WebDAV': 'Enable WebDAV',
-  '本地优先，手动同步；不会上传到任何第三方服务。':
-      'Local-first and manual; nothing goes to a third-party service.',
+  '本地优先，手动上传整包备份；不会自动同步或合并。':
+      'Local-first, manual full backups only; no automatic sync or merge.',
   '服务器地址': 'Server URL',
   '用户名': 'Username',
   '密码': 'Password',
   '远端文件夹': 'Remote folder',
-  '同步会在设置中手动触发，采用较新覆盖较旧；同名冲突会保留副本。':
-      'Sync runs manually from here; newer files win and clashing names keep a copy.',
+  '上传与恢复都是整包操作；恢复前会先备份当前数据。':
+      'Upload and restore work on the whole archive; current data is backed up first.',
   '测试连接': 'Test connection',
   '上传备份': 'Upload backup',
-  '恢复最新': 'Restore latest',
-  '请先填写 WebDAV 地址与用户名，并启用同步':
-      'Fill in the WebDAV URL and username, and enable sync first.',
+  '恢复备份…': 'Restore backup…',
+  '请先填写 WebDAV 地址与用户名，并启用备份':
+      'Fill in the WebDAV URL and username, and enable backup first.',
   '连接成功，远端有 {n} 份备份': 'Connected — {n} backups on the server',
   '备份已上传到 WebDAV': 'Backup uploaded to WebDAV',
   '远端还没有备份': 'No backups on the server yet',
@@ -2078,7 +2182,12 @@ const Map<String, String> _en = <String, String>{
       'Will restore {name} ({y}-{m}-{d}). Current data is backed up first.',
   '已从 WebDAV 恢复': 'Restored from WebDAV',
   '恢复失败：{e}': 'Restore failed: {e}',
-  '正在同步…': 'Syncing…',
+  '正在处理备份…': 'Working on backup…',
+  '确认备份内容': 'Review backup contents',
+  '备份包含 {n} 个文件{date}。恢复前会先备份当前数据。':
+      'The backup contains {n} files{date}. Current data is backed up first.',
+  '4 位数字密码，只锁界面；笔记文件仍是明文。忘记后无法找回。':
+      'A 4-digit passcode locks the UI only; note files stay plain text. It cannot be recovered.',
 };
 
 /// 本页的翻译入口：中文原文写在调用处，英文由 [_en] 提供。

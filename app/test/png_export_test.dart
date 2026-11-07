@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -129,5 +130,143 @@ void main() {
     }
     // 第一段之后才有可用的断点，所以卡片高度一定大于最后一段的起点。
     expect(boundary.size.height, greaterThan(previous!));
+  });
+
+  testWidgets('PNG 卡片保留字体、删除线、列表与代码块', (tester) async {
+    final note = Note(
+      id: 'styles',
+      title: '效果都在',
+      delta: [
+        {'insert': '普通'},
+        {'insert': '加粗', 'attributes': {'bold': true}},
+        {'insert': '删除', 'attributes': {'strike': true}},
+        {'insert': '行内码', 'attributes': {'code': true}},
+        {'insert': '楷体', 'attributes': {'font': 'WenKai'}},
+        {'insert': '\n'},
+        {'insert': '圆点'},
+        {'insert': '\n', 'attributes': {'list': 'bullet'}},
+        {'insert': '有序'},
+        {'insert': '\n', 'attributes': {'list': 'ordered'}},
+        {'insert': '待办'},
+        {'insert': '\n', 'attributes': {'list': 'checked'}},
+        {'insert': '引用'},
+        {'insert': '\n', 'attributes': {'blockquote': true}},
+        {'insert': '大标题'},
+        {'insert': '\n', 'attributes': {'header': 1}},
+        {
+          'insert': {
+            'code-block': jsonEncode({'code': 'void main() {}', 'lang': 'dart'}),
+          },
+        },
+        {'insert': '\n'},
+        {'insert': {'divider': true}},
+        {'insert': '\n'},
+        {'insert': {'image': 'assets/missing.png'}},
+        {'insert': '\n'},
+        {'insert': {'image': 'assets/real.png'}},
+        {'insert': '\n'},
+      ],
+      text: '效果都在',
+      kind: NoteKind.note,
+      createdAt: DateTime(2026, 11, 6),
+      updatedAt: DateTime(2026, 11, 6),
+      words: 40,
+      day: '2026-11-06',
+    );
+
+    final boundaryKey = GlobalKey();
+    // 用引擎现场画一张 1×1 的 PNG，用来看图片是否真的画进卡片。
+    final pixel = await tester.runAsync(() async {
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawRect(
+        const Rect.fromLTWH(0, 0, 1, 1),
+        Paint()..color = Colors.red,
+      );
+      final image = await recorder.endRecording().toImage(1, 1);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      return data!.buffer.asUint8List();
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: RepaintBoundary(
+              key: boundaryKey,
+              child: NoteImageCard(
+                note: note,
+                theme: NoteImageTheme.paper,
+                width: 520,
+                images: {'assets/real.png': pixel!},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final runs = <(String, TextStyle?)>[];
+    void walk(InlineSpan span, TextStyle? inherited) {
+      final style = span.style ?? inherited;
+      if (span is! TextSpan) return;
+      if (span.text != null) runs.add((span.text!, style));
+      for (final child in span.children ?? const <InlineSpan>[]) {
+        walk(child, style);
+      }
+    }
+
+    for (final rich in tester.widgetList<RichText>(find.byType(RichText))) {
+      walk(rich.text, rich.text.style);
+    }
+    String? styleOf(String text, bool Function(TextStyle) test) {
+      for (final run in runs) {
+        if (run.$1 == text && run.$2 != null && test(run.$2!)) return run.$1;
+      }
+      return null;
+    }
+
+    expect(
+      styleOf('加粗', (s) => s.fontWeight == FontWeight.w700),
+      isNotNull,
+    );
+    expect(
+      styleOf(
+        '删除',
+        (s) => s.decoration?.contains(TextDecoration.lineThrough) ?? false,
+      ),
+      isNotNull,
+    );
+    expect(
+      styleOf(
+        '行内码',
+        (s) =>
+            s.fontFamily == 'SourceHanMono' && s.backgroundColor != null,
+      ),
+      isNotNull,
+    );
+    expect(styleOf('楷体', (s) => s.fontFamily == 'WenKai'), isNotNull);
+    expect(styleOf('大标题', (s) => s.fontFamily == 'WenKai'), isNotNull);
+    for (final prefix in ['•  ', '1.  ', '☑  ']) {
+      expect(runs.any((run) => run.$1 == prefix), isTrue,
+          reason: '列表前缀 $prefix 应该出现');
+    }
+    final allText = runs.map((run) => run.$1).join();
+    expect(allText.contains('void main'), isTrue);
+    expect(allText.contains('［图片］'), isTrue);
+    expect(allText.contains('引用'), isTrue);
+    expect(find.byType(Image), findsOneWidget);
+
+    final boundary =
+        boundaryKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+    final data = await tester.runAsync(() async {
+      final image = await boundary.toImage(pixelRatio: 2);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      return data;
+    });
+    Directory('test_out').createSync(recursive: true);
+    File('test_out/note_card_formatted.png')
+        .writeAsBytesSync(data!.buffer.asUint8List());
   });
 }

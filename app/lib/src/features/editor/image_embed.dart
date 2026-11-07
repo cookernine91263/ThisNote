@@ -107,6 +107,11 @@ class NoteImageEmbedBuilder extends EmbedBuilder {
                   child: Image.file(
                     file,
                     width: constraints.maxWidth * width,
+                    cacheWidth: (constraints.maxWidth *
+                            width *
+                            MediaQuery.devicePixelRatioOf(context))
+                        .round()
+                        .clamp(64, 4096),
                     fit: BoxFit.fitWidth,
                     errorBuilder: (context, error, stack) => _missing(context),
                   ),
@@ -269,7 +274,7 @@ class _ImageControlsState extends State<_ImageControls> {
         onTap: () => Navigator.of(context).pop(),
         child: InteractiveViewer(
           maxScale: 4,
-          child: Center(child: Image.file(_file)),
+          child: Center(child: Image.file(_file, cacheWidth: 2400)),
         ),
       ),
     );
@@ -329,6 +334,7 @@ class _ImageControlsState extends State<_ImageControls> {
                   child: Image.file(
                     _file,
                     height: 200,
+                    cacheWidth: 1200,
                     fit: BoxFit.contain,
                     errorBuilder: (context, error, stack) => Text(
                       _t('图片已不在此设备上'),

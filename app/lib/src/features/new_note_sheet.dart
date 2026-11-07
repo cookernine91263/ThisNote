@@ -22,6 +22,7 @@ const Map<String, String> _en = <String, String>{
   '所有内容只保存在本机': 'Everything stays on this device',
   '空白开始': 'Start blank',
   '用「{name}」开始': 'Start with “{name}”',
+  '我的模板': 'My template',
 };
 
 String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
@@ -97,7 +98,10 @@ class _NewNoteSheetState extends State<_NewNoteSheet> {
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
     final state = context.watch<AppState>();
-    final templates = noteTemplates;
+    final templates = [
+      ...noteTemplates,
+      ...state.userTemplates.map((template) => template.toNoteTemplate()),
+    ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(26, 22, 26, 22),
       child: Column(
@@ -158,11 +162,13 @@ class _NewNoteSheetState extends State<_NewNoteSheet> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: templates.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  // 英文模板说明较长，两列会把句子截断；英文改成单列，
+                  // 中文仍保持紧凑的两列。
+                  crossAxisCount: I18n.isEn ? 1 : 2,
                   mainAxisSpacing: 8,
                   crossAxisSpacing: 8,
-                  childAspectRatio: 2.35,
+                  mainAxisExtent: I18n.isEn ? 80 : 76,
                 ),
                 itemBuilder: (context, i) {
                   final t = templates[i];
@@ -174,6 +180,15 @@ class _NewNoteSheetState extends State<_NewNoteSheet> {
                       _template = t;
                       _kind = t.kind;
                     }),
+                    onDelete: t.id.startsWith('user_')
+                        ? () async {
+                            await state.deleteUserTemplate(t.id);
+                            if (!mounted) return;
+                            setState(() {
+                              if (_template?.id == t.id) _template = null;
+                            });
+                          }
+                        : null,
                   );
                 },
               ),
@@ -324,11 +339,13 @@ class _TemplateCard extends StatelessWidget {
     required this.template,
     required this.selected,
     required this.onTap,
+    this.onDelete,
   });
 
   final NoteTemplate template;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -376,18 +393,32 @@ class _TemplateCard extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         template.description,
-                        maxLines: 1,
+                        // 英文模板说明比中文长，单行会只剩半句。
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontFamily: 'NotoSansSC',
                           fontSize: 9.5,
+                          height: 1.3,
                           color: c.inkMuted,
                         ),
                       ),
                     ],
                   ),
                 ),
-                if (selected)
+                if (onDelete != null && hovered)
+                  GestureDetector(
+                    onTap: onDelete,
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(
+                        LucideIcons.x,
+                        size: 13,
+                        color: c.inkMuted,
+                      ),
+                    ),
+                  )
+                else if (selected)
                   Icon(LucideIcons.check, size: 13, color: c.accent),
               ],
             ),

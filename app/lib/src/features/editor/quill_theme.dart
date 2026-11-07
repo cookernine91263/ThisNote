@@ -15,6 +15,7 @@ DefaultStyles buildQuillStyles(
   final paragraphSpacing = VerticalSpacing(2 + gap / 2, 2 + gap / 2);
   final body = TextStyle(
     fontFamily: 'NotoSansSC',
+    fontFamilyFallback: AppTypography.fallback,
     fontSize: bodySize,
     height: lineHeight,
     color: c.ink,
@@ -40,6 +41,7 @@ DefaultStyles buildQuillStyles(
     h1: block(
       TextStyle(
         fontFamily: 'WenKai',
+        fontFamilyFallback: AppTypography.fallback,
         fontSize: 30 * scale,
         height: 1.45,
         color: c.ink,
@@ -51,6 +53,7 @@ DefaultStyles buildQuillStyles(
     h2: block(
       TextStyle(
         fontFamily: 'WenKai',
+        fontFamilyFallback: AppTypography.fallback,
         fontSize: 24 * scale,
         height: 1.45,
         color: c.ink,
@@ -62,6 +65,7 @@ DefaultStyles buildQuillStyles(
     h3: block(
       TextStyle(
         fontFamily: 'NotoSansSC',
+        fontFamilyFallback: AppTypography.fallback,
         fontSize: 20 * scale,
         height: 1.5,
         color: c.ink,
@@ -92,7 +96,12 @@ DefaultStyles buildQuillStyles(
     code: block(
       TextStyle(
         fontFamily: 'SourceHanMono',
-        fontFamilyFallback: const ['NotoSansSC', 'monospace'],
+        fontFamilyFallback: const [
+          'NotoSansSC',
+          'Microsoft YaHei',
+          'Noto Sans CJK SC',
+          'monospace',
+        ],
         fontSize: 14 * scale,
         height: 1.65,
         color: c.inkSoft,

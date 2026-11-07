@@ -167,9 +167,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         children: [
           Positioned.fill(child: PaperGrain(color: c.ink, opacity: c.grain * 1.2)),
           // 语言选择放在第一页右上角，任何一步都能切。
+          // 用状态栏高度做偏移，避免胶囊压住时间与电池图标。
           Positioned(
-            top: 24,
-            right: 32,
+            top: MediaQuery.paddingOf(context).top + 12,
+            right: 24,
             child: LanguageToggle(
               value: state.settings.language,
               onChanged: state.setLanguage,

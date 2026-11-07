@@ -77,7 +77,11 @@ class StatsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
-    final state = context.watch<AppState>();
+    final state = context.read<AppState>();
+    // 只在笔记/活动/目标变化时重算，不被保存状态点刷新。
+    context.select<AppState, (int, int)>(
+      (value) => (value.dataRevision, value.settings.dailyGoal),
+    );
     final days = state.last7Days;
     final maxWords = days.fold(0, (m, d) => math.max(m, d.words)).toInt();
     final total = state.diaryCount + state.essayCount + state.noteCount;
@@ -189,6 +193,17 @@ class StatsPage extends StatelessWidget {
                 color: c.inkMuted,
               ),
             ),
+            if (state.totalWritingSeconds > 0) ...[
+              const SizedBox(height: 3),
+              Text(
+                writingTimeLabel(state.totalWritingSeconds, state.totalWords),
+                style: TextStyle(
+                  fontFamily: 'NotoSansSC',
+                  fontSize: 9.5,
+                  color: c.inkMuted,
+                ),
+              ),
+            ],
           ],
         ],
       ),

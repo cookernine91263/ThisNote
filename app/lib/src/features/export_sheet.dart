@@ -30,6 +30,8 @@ const Map<String, String> _en = <String, String>{
   '选择一种离开纸面的方式。原稿仍会留在「此记」里。':
       'Choose how it leaves the page. The original stays in ThisNote.',
   '正在排版…': 'Laying out…',
+  '已打开 PDF，可在阅读器里打印':
+      'PDF opened — print it from your reader',
 };
 
 String _t(String zh, [Map<String, Object?>? args]) => tr(zh, args, _en);
@@ -60,12 +62,20 @@ Future<void> showExportSheet(BuildContext context) async {
     await state.saveNow();
     final exporter = NoteExporter(state.store);
     Uint8List bytes;
+    var printAfter = false;
     switch (format) {
       case ExportFormat.docx:
         bytes = await exporter.docx(note);
         break;
       case ExportFormat.pdf:
         bytes = await exporter.pdf(note, accent: accent);
+        break;
+      case ExportFormat.epub:
+        bytes = await exporter.epub(note);
+        break;
+      case ExportFormat.printPdf:
+        bytes = await exporter.pdf(note, accent: accent);
+        printAfter = true;
         break;
       case ExportFormat.png:
         return;
@@ -78,6 +88,26 @@ Future<void> showExportSheet(BuildContext context) async {
       case ExportFormat.txt:
         bytes = Uint8List.fromList(utf8.encode(exporter.txt(note)));
         break;
+    }
+    if (printAfter && !Platform.isAndroid) {
+      final dir = await getTemporaryDirectory();
+      final file = File(p.join(
+        dir.path,
+        '${_safeName(note.title)}.pdf',
+      ));
+      await file.writeAsBytes(bytes, flush: true);
+      await Process.start(
+        'cmd',
+        ['/c', 'start', '', file.path],
+        runInShell: true,
+      );
+      if (context.mounted) {
+        showToast(
+          context,
+          _t('已打开 PDF，可在阅读器里打印'),
+        );
+      }
+      return;
     }
     if (Platform.isAndroid) {
       final dir = await getTemporaryDirectory();
@@ -205,6 +235,8 @@ class _FormatRow extends StatelessWidget {
     final icon = switch (format) {
       ExportFormat.docx => LucideIcons.fileText,
       ExportFormat.pdf => LucideIcons.fileType,
+      ExportFormat.epub => LucideIcons.bookOpen,
+      ExportFormat.printPdf => LucideIcons.printer,
       ExportFormat.png => LucideIcons.image,
       ExportFormat.markdown => LucideIcons.fileCode,
       ExportFormat.html => LucideIcons.globe,

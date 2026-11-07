@@ -17,9 +17,11 @@ class PaperGrain extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IgnorePointer(
-      child: CustomPaint(
-        painter: _GrainPainter(color.withValues(alpha: opacity)),
-        size: Size.infinite,
+      child: RepaintBoundary(
+        child: CustomPaint(
+          painter: _GrainPainter(color.withValues(alpha: opacity)),
+          size: Size.infinite,
+        ),
       ),
     );
   }
@@ -33,7 +35,7 @@ class _GrainPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final rnd = math.Random(20261030);
     final paint = Paint()..color = color;
-    final count = (size.width * size.height / 2200).clamp(250, 2400).toInt();
+    final count = (size.width * size.height / 3000).clamp(180, 1600).toInt();
     for (var i = 0; i < count; i++) {
       final x = rnd.nextDouble() * size.width;
       final y = rnd.nextDouble() * size.height;
@@ -213,6 +215,7 @@ class SoftIconButton extends StatelessWidget {
       child: Semantics(
         button: true,
         label: tooltip,
+        onTap: onPressed,
         child: GestureDetector(
           onTap: onPressed,
           behavior: HitTestBehavior.opaque,
@@ -401,15 +404,21 @@ class TagChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppPalette.of(context);
-    return HoverBuilder(
-      cursor: onTap == null
-          ? SystemMouseCursors.basic
-          : SystemMouseCursors.click,
-      builder: (context, hovered, t) {
-        return GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: Motion.fast,
+    final description = count == null ? label : '$label，$count';
+    return Semantics(
+      button: onTap != null,
+      selected: selected,
+      label: description,
+      onTap: onTap,
+      child: HoverBuilder(
+        cursor: onTap == null
+            ? SystemMouseCursors.basic
+            : SystemMouseCursors.click,
+        builder: (context, hovered, t) {
+          return GestureDetector(
+            onTap: onTap,
+            child: AnimatedContainer(
+              duration: Motion.fast,
             padding: EdgeInsets.symmetric(
               horizontal: dense ? 9 : 12,
               vertical: dense ? 5 : 7,
@@ -464,6 +473,7 @@ class TagChip extends StatelessWidget {
           ),
         );
       },
+      ),
     );
   }
 }

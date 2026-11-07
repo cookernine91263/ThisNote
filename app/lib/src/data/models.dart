@@ -127,6 +127,7 @@ class NoteMeta {
     required this.id,
     required this.title,
     required this.text,
+    this.preview = '',
     required this.kind,
     required this.createdAt,
     required this.updatedAt,
@@ -134,6 +135,7 @@ class NoteMeta {
     this.mood,
     this.weather,
     this.pinned = false,
+    this.fixed = false,
     this.favorite = false,
     this.deletedAt,
     this.words = 0,
@@ -146,11 +148,17 @@ class NoteMeta {
   final String id;
   String title;
   String text;
+
+  /// 列表卡片用的短摘要；library.json 不再保存全文。
+  String preview;
   NoteKind kind;
   List<String> tags;
   int? mood;
   String? weather;
   bool pinned;
+
+  /// 固定后停在手动顺序里的位置，不随「最近 / 创建 / 字数」重新排序。
+  bool fixed;
   bool favorite;
   DateTime createdAt;
   DateTime updatedAt;
@@ -163,18 +171,20 @@ class NoteMeta {
   String? folderId;
   int sortOrder;
 
-  String get excerpt => excerptOf(text);
+  String get excerpt => preview.isNotEmpty ? preview : excerptOf(text);
   bool get isTrashed => deletedAt != null;
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,
         'text': text,
+        'preview': preview,
         'kind': kind.key,
         'tags': tags,
         'mood': mood,
         'weather': weather,
         'pinned': pinned,
+        'fixed': fixed,
         'favorite': favorite,
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
@@ -186,15 +196,25 @@ class NoteMeta {
         'sortOrder': sortOrder,
       };
 
+  /// library 索引只保留摘要与元信息，全文在 notes/ 与 index/text/ 里。
+  Map<String, dynamic> toIndexJson() {
+    final json = toJson();
+    json.remove('text');
+    return json;
+  }
+
   factory NoteMeta.fromJson(Map<String, dynamic> j) => NoteMeta(
         id: j['id'] as String,
         title: (j['title'] as String?) ?? '',
         text: (j['text'] as String?) ?? '',
+        preview: (j['preview'] as String?) ??
+            excerptOf((j['text'] as String?) ?? ''),
         kind: NoteKindX.fromKey(j['kind'] as String?),
         tags: (j['tags'] as List?)?.map((e) => e.toString()).toList() ?? [],
         mood: j['mood'] as int?,
         weather: j['weather'] as String?,
         pinned: (j['pinned'] as bool?) ?? false,
+        fixed: (j['fixed'] as bool?) ?? false,
         favorite: (j['favorite'] as bool?) ?? false,
         createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ??
             DateTime.now(),
@@ -213,11 +233,13 @@ class NoteMeta {
   NoteMeta copyWith({
     String? title,
     String? text,
+    String? preview,
     NoteKind? kind,
     List<String>? tags,
     int? mood,
     String? weather,
     bool? pinned,
+    bool? fixed,
     bool? favorite,
     DateTime? updatedAt,
     DateTime? deletedAt,
@@ -233,11 +255,13 @@ class NoteMeta {
         id: id,
         title: title ?? this.title,
         text: text ?? this.text,
+        preview: preview ?? this.preview,
         kind: kind ?? this.kind,
         tags: tags ?? this.tags,
         mood: mood ?? this.mood,
         weather: weather ?? this.weather,
         pinned: pinned ?? this.pinned,
+        fixed: fixed ?? this.fixed,
         favorite: favorite ?? this.favorite,
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
@@ -256,18 +280,26 @@ class Folder {
     required this.name,
     this.parentId,
     this.order = 0,
+    this.pinned = false,
+    this.fixed = false,
   });
 
   final String id;
   String name;
   String? parentId;
   int order;
+  bool pinned;
+
+  /// 固定后停在「全部」的手动顺序里，不随重新排序移动。
+  bool fixed;
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
         'parentId': parentId,
         'order': order,
+        'pinned': pinned,
+        'fixed': fixed,
       };
 
   factory Folder.fromJson(Map<String, dynamic> j) => Folder(
@@ -275,6 +307,8 @@ class Folder {
         name: (j['name'] as String?) ?? tr('文件夹', null, _folderEn),
         parentId: j['parentId'] as String?,
         order: (j['order'] as int?) ?? 0,
+        pinned: (j['pinned'] as bool?) ?? false,
+        fixed: (j['fixed'] as bool?) ?? false,
       );
 
   Folder copyWith({
@@ -282,12 +316,16 @@ class Folder {
     String? parentId,
     bool clearParent = false,
     int? order,
+    bool? pinned,
+    bool? fixed,
   }) =>
       Folder(
         id: id,
         name: name ?? this.name,
         parentId: clearParent ? null : (parentId ?? this.parentId),
         order: order ?? this.order,
+        pinned: pinned ?? this.pinned,
+        fixed: fixed ?? this.fixed,
       );
 }
 
@@ -304,10 +342,14 @@ class Note {
     this.mood,
     this.weather,
     this.pinned = false,
+    this.fixed = false,
     this.favorite = false,
     this.deletedAt,
     this.words = 0,
     this.writingSeconds = 0,
+    this.goalWords = 0,
+    this.cursorOffset = 0,
+    this.scrollOffset = 0,
     this.folderId,
     this.sortOrder = 0,
     required this.day,
@@ -324,6 +366,7 @@ class Note {
   int? mood;
   String? weather;
   bool pinned;
+  bool fixed;
   bool favorite;
   DateTime createdAt;
   DateTime updatedAt;
@@ -332,6 +375,12 @@ class Note {
 
   /// 真正动笔的时长（秒），停顿超过一分钟不计入。
   int writingSeconds;
+  /// 本篇的字数目标，0 表示不设目标。
+  int goalWords;
+
+  /// 上次离开这篇时的光标与滚动位置，用来接着写。
+  int cursorOffset;
+  double scrollOffset;
   String day;
   String? folderId;
   int sortOrder;
@@ -343,11 +392,13 @@ class Note {
         id: id,
         title: title,
         text: text,
+        preview: excerptOf(text),
         kind: kind,
         tags: tags,
         mood: mood,
         weather: weather,
         pinned: pinned,
+        fixed: fixed,
         favorite: favorite,
         createdAt: createdAt,
         updatedAt: updatedAt,
@@ -372,6 +423,7 @@ class Note {
         mood: meta.mood,
         weather: meta.weather,
         pinned: meta.pinned,
+        fixed: meta.fixed,
         favorite: meta.favorite,
         createdAt: meta.createdAt,
         updatedAt: meta.updatedAt,
@@ -385,6 +437,9 @@ class Note {
 
   Map<String, dynamic> toJson() => {
         ...toMeta().toJson(),
+        'goalWords': goalWords,
+        'cursorOffset': cursorOffset,
+        'scrollOffset': scrollOffset,
         'delta': delta,
       };
 
@@ -400,6 +455,7 @@ class Note {
         mood: j['mood'] as int?,
         weather: j['weather'] as String?,
         pinned: (j['pinned'] as bool?) ?? false,
+        fixed: (j['fixed'] as bool?) ?? false,
         favorite: (j['favorite'] as bool?) ?? false,
         createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ??
             DateTime.now(),
@@ -410,9 +466,47 @@ class Note {
             : DateTime.tryParse(j['deletedAt'] as String),
         words: (j['words'] as int?) ?? 0,
         writingSeconds: (j['writingSeconds'] as int?) ?? 0,
+        goalWords: (j['goalWords'] as int?) ?? 0,
+        cursorOffset: (j['cursorOffset'] as int?) ?? 0,
+        scrollOffset: ((j['scrollOffset'] as num?) ?? 0).toDouble(),
         day: (j['day'] as String?) ?? dayKey(DateTime.now()),
         folderId: j['folderId'] as String?,
         sortOrder: (j['sortOrder'] as int?) ?? 0,
+      );
+}
+
+/// 崩溃恢复草稿：保存失败或进程被杀时，下一次启动可以把它捡回来。
+class JournalEntry {
+  JournalEntry({
+    required this.id,
+    required this.title,
+    required this.delta,
+    required this.text,
+    required this.savedAt,
+  });
+
+  final String id;
+  final String title;
+  final List<dynamic> delta;
+  final String text;
+  final DateTime savedAt;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'delta': delta,
+        'text': text,
+        'savedAt': savedAt.toIso8601String(),
+      };
+
+  factory JournalEntry.fromJson(Map<String, dynamic> json) => JournalEntry(
+        id: (json['id'] as String?) ?? '',
+        title: (json['title'] as String?) ?? '',
+        delta: (json['delta'] as List?) ?? const [],
+        text: (json['text'] as String?) ?? '',
+        savedAt:
+            DateTime.tryParse(json['savedAt'] as String? ?? '') ??
+                DateTime.now(),
       );
 }
 
@@ -489,10 +583,10 @@ class AiSettings {
 
   AiThinking get thinkingLevel => AiThinking.fromKey(thinking);
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson({bool includeApiKey = true}) => {
         'enabled': enabled,
         'baseUrl': baseUrl,
-        'apiKey': apiKey,
+        'apiKey': includeApiKey ? apiKey : '',
         'model': model,
         'thinking': thinking,
       };
@@ -624,11 +718,11 @@ class WebDavSettings {
   String password;
   String folder;
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson({bool includePassword = true}) => {
         'enabled': enabled,
         'url': url,
         'username': username,
-        'password': password,
+        'password': includePassword ? password : '',
         'folder': folder,
       };
 
@@ -685,6 +779,9 @@ class AppSettings {
     this.paragraphGap = 0,
     this.letterSpacing = 0.15,
     this.dailyGoal = 500,
+    this.typewriter = false,
+    this.paragraphFocus = false,
+    this.styleCheck = false,
     this.lockEnabled = false,
     this.pinHash,
     this.pinSalt,
@@ -711,6 +808,9 @@ class AppSettings {
   double paragraphGap;
   double letterSpacing;
   int dailyGoal;
+  bool typewriter;
+  bool paragraphFocus;
+  bool styleCheck;
   bool lockEnabled;
   String? pinHash;
   String? pinSalt;
@@ -728,7 +828,7 @@ class AppSettings {
   AiSettings get aiSettings => ai ??= AiSettings();
   WebDavSettings get webdavSettings => webdav ??= WebDavSettings();
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson({bool includeSecrets = true}) => {
         'themeMode': themeMode.name,
         'language': language,
         'accent': accent,
@@ -740,6 +840,9 @@ class AppSettings {
         'paragraphGap': paragraphGap,
         'letterSpacing': letterSpacing,
         'dailyGoal': dailyGoal,
+        'typewriter': typewriter,
+        'paragraphFocus': paragraphFocus,
+        'styleCheck': styleCheck,
         'lockEnabled': lockEnabled,
         'pinHash': pinHash,
         'pinSalt': pinSalt,
@@ -749,8 +852,8 @@ class AppSettings {
         'sort': sort,
         'savedColors': savedColors,
         'customFonts': customFonts.map((e) => e.toJson()).toList(),
-        'ai': aiSettings.toJson(),
-        'webdav': webdavSettings.toJson(),
+        'ai': aiSettings.toJson(includeApiKey: includeSecrets),
+        'webdav': webdavSettings.toJson(includePassword: includeSecrets),
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -769,6 +872,9 @@ class AppSettings {
         paragraphGap: ((j['paragraphGap'] as num?) ?? 0).toDouble(),
         letterSpacing: ((j['letterSpacing'] as num?) ?? 0.15).toDouble(),
         dailyGoal: (j['dailyGoal'] as int?) ?? 500,
+        typewriter: (j['typewriter'] as bool?) ?? false,
+        paragraphFocus: (j['paragraphFocus'] as bool?) ?? false,
+        styleCheck: (j['styleCheck'] as bool?) ?? false,
         lockEnabled: (j['lockEnabled'] as bool?) ?? false,
         pinHash: j['pinHash'] as String?,
         pinSalt: j['pinSalt'] as String?,
