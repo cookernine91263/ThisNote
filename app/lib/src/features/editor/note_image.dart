@@ -35,6 +35,7 @@ const Map<String, String> _en = <String, String>{
   '标签': 'Tags',
   '长图会按内容自动延展': 'The long image grows with the content',
   '正在生成…': 'Generating…',
+  '正在生成图片 {done}/{total}': 'Rendering image {done}/{total}',
   '保存 PNG': 'Save PNG',
   '图片张数': 'Pages',
   '共 {n} 张': '{n} images',
@@ -153,6 +154,288 @@ Future<void> showPngExport(BuildContext context) async {
   );
 }
 
+/// 读出笔记正文里引用的图片，预览和批量导出共用。
+Future<Map<String, Uint8List>> loadNoteImages(
+  NoteStore store,
+  Note note,
+) async {
+  final paths = <String>{};
+  for (final op in note.delta) {
+    if (op is! Map) continue;
+    final insert = op['insert'];
+    if (insert is! Map) continue;
+    final path = insert['image'];
+    if (path is String && path.isNotEmpty) paths.add(path);
+  }
+  if (paths.isEmpty) return const {};
+  final loaded = <String, Uint8List>{};
+  for (final path in paths) {
+    final bytes = await store.readAsset(path);
+    if (bytes != null) loaded[path] = bytes;
+  }
+  return loaded;
+}
+
+/// 按内容高度决定自动分几张，尽量接近 3:4 的竖版。
+int noteImageAutoPageCount(double width, double height, int maxPages) {
+  if (height <= 0) return 1;
+  final ideal = math.max(320.0, width * 1.36);
+  return (height / ideal).ceil().clamp(1, maxPages);
+}
+
+/// 自动分页：每个断点尽量靠近等分线，但一定落在段首。
+List<double> noteImageAutoCuts(
+  int pages,
+  List<double> tops,
+  double height,
+) {
+  if (pages <= 1 || tops.length < 3 || height <= 0) return const [];
+  final candidates = tops.sublist(1);
+  final gap = math.max(60.0, math.min(180.0, height / (pages * 2)));
+  final cuts = <double>[];
+  var previous = tops.first;
+  for (var i = 1; i < pages; i++) {
+    final target = height * i / pages;
+    double? best;
+    for (final y in candidates) {
+      if (y - previous < gap) continue;
+      if (height - y < gap * 0.5) continue;
+      if (best == null || (y - target).abs() < (best - target).abs()) {
+        best = y;
+      }
+    }
+    if (best == null) break;
+    cuts.add(best);
+    previous = best;
+  }
+  return cuts;
+}
+
+List<(double, double)> noteImagePageBounds(List<double> cuts, double height) {
+  final ordered = cuts.where((y) => y > 4 && y < height - 4).toList()..sort();
+  final bounds = <(double, double)>[];
+  var top = 0.0;
+  for (final cut in ordered) {
+    bounds.add((top, cut));
+    top = cut;
+  }
+  bounds.add((top, height));
+  return bounds;
+}
+
+Future<ui.Image> noteImageCrop(ui.Image source, Rect src) async {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  canvas.drawImageRect(
+    source,
+    src,
+    Rect.fromLTWH(0, 0, src.width, src.height),
+    Paint()..filterQuality = FilterQuality.none,
+  );
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(src.width.round(), src.height.round());
+  picture.dispose();
+  return image;
+}
+
+/// 依次把多篇笔记渲染成长图，返回「笔记 id → 每页 PNG 字节」。
+///
+/// 渲染用的卡片藏在进度页下面真实排版，进度页不透明，所以用户看不到它；
+/// 每篇仍按单篇导出的规则自动分页。
+Future<Map<String, List<Uint8List>>> renderNotesPng(
+  BuildContext context, {
+  required List<Note> notes,
+  required NoteStore store,
+  double width = 520,
+}) async {
+  if (notes.isEmpty) return const {};
+  final result = await showGeneralDialog<Map<String, List<Uint8List>>>(
+    context: context,
+    barrierDismissible: false,
+    barrierLabel: 'PNG export',
+    barrierColor: Colors.black.withValues(alpha: 0.35),
+    pageBuilder: (context, _, _) => _BatchPngPage(
+      notes: notes,
+      store: store,
+      width: width,
+    ),
+  );
+  return result ?? const {};
+}
+
+class _BatchPngPage extends StatefulWidget {
+  const _BatchPngPage({
+    required this.notes,
+    required this.store,
+    required this.width,
+  });
+
+  final List<Note> notes;
+  final NoteStore store;
+  final double width;
+
+  @override
+  State<_BatchPngPage> createState() => _BatchPngPageState();
+}
+
+class _BatchPngPageState extends State<_BatchPngPage> {
+  var _stageKey = GlobalKey();
+  var _lineKeys = NoteImageLineKeys();
+  Note? _current;
+  Map<String, Uint8List> _images = const {};
+  var _done = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _run());
+  }
+
+  Future<void> _run() async {
+    final results = <String, List<Uint8List>>{};
+    try {
+      for (final note in widget.notes) {
+        final images = await loadNoteImages(widget.store, note);
+        if (!mounted) return;
+        for (final bytes in images.values) {
+          try {
+            await precacheImage(MemoryImage(bytes), context);
+          } catch (_) {}
+        }
+        if (!mounted) return;
+        final lineKeys = NoteImageLineKeys();
+        setState(() {
+          _stageKey = GlobalKey();
+          _lineKeys = lineKeys;
+          _images = images;
+          _current = note;
+        });
+        final pages = await _capture(note, lineKeys);
+        if (pages.isNotEmpty) results[note.id] = pages;
+        if (mounted) setState(() => _done++);
+      }
+    } catch (_) {
+      // 单篇失败就跳过，已渲染好的部分仍然可以打包。
+    }
+    if (mounted) Navigator.of(context).pop(results);
+  }
+
+  Future<List<Uint8List>> _capture(
+    Note note,
+    NoteImageLineKeys lineKeys,
+  ) async {
+    // 等两帧：一帧让新卡片完成布局，一帧让缓存里的图片真正画上去。
+    await WidgetsBinding.instance.endOfFrame;
+    await WidgetsBinding.instance.endOfFrame;
+    final object = _stageKey.currentContext?.findRenderObject();
+    if (object is! RenderRepaintBoundary || !object.hasSize) return const [];
+    final tops = <double>[];
+    for (var i = 0; i < lineKeys.count; i++) {
+      final box = lineKeys.at(i).currentContext?.findRenderObject();
+      if (box is! RenderBox || !box.hasSize) continue;
+      tops.add(box.localToGlobal(Offset.zero, ancestor: object).dy);
+    }
+    final size = object.size;
+    if (size.height <= 0 || size.width <= 0) return const [];
+    final maxPages = math.max(1, math.min(tops.length, 20));
+    final pages = noteImageAutoPageCount(size.width, size.height, maxPages);
+    final cuts = noteImageAutoCuts(pages, tops, size.height);
+    final ratio = math.min(3.0, math.max(1.0, 16000 / size.height));
+    final image = await object.toImage(pixelRatio: ratio);
+    final scale = image.width / size.width;
+    final out = <Uint8List>[];
+    for (final bound in noteImagePageBounds(cuts, size.height)) {
+      final page = await noteImageCrop(
+        image,
+        Rect.fromLTRB(
+          0,
+          bound.$1 * scale,
+          image.width.toDouble(),
+          bound.$2 * scale,
+        ),
+      );
+      final data = await page.toByteData(format: ui.ImageByteFormat.png);
+      page.dispose();
+      if (data != null) out.add(data.buffer.asUint8List());
+    }
+    image.dispose();
+    return out;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppPalette.of(context);
+    final total = widget.notes.length;
+    final current = _current;
+    return Material(
+      color: c.paper,
+      child: Stack(
+        children: [
+          if (current != null)
+            Positioned(
+              left: 0,
+              top: 0,
+              width: widget.width,
+              child: RepaintBoundary(
+                key: _stageKey,
+                child: NoteImageCard(
+                  note: current,
+                  theme: NoteImageTheme.paper,
+                  width: widget.width,
+                  lineKeys: _lineKeys,
+                  images: _images,
+                ),
+              ),
+            ),
+          Positioned.fill(
+            child: ColoredBox(
+              color: c.paper,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 26,
+                    vertical: 22,
+                  ),
+                  decoration: BoxDecoration(
+                    color: c.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: c.line),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: c.accent,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Text(
+                        _t('正在生成图片 {done}/{total}', {
+                          'done': _done + 1 > total ? total : _done + 1,
+                          'total': total,
+                        }),
+                        style: TextStyle(
+                          fontFamily: 'NotoSansSC',
+                          fontSize: 12,
+                          color: c.inkSoft,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PngDialog extends StatefulWidget {
   const _PngDialog({required this.note, required this.store});
   final Note note;
@@ -192,20 +475,8 @@ class _PngDialogState extends State<_PngDialog> {
   }
 
   Future<void> _loadImages() async {
-    final paths = <String>{};
-    for (final op in widget.note.delta) {
-      if (op is! Map) continue;
-      final insert = op['insert'];
-      if (insert is! Map) continue;
-      final path = insert['image'];
-      if (path is String && path.isNotEmpty) paths.add(path);
-    }
-    if (paths.isEmpty) return;
-    final loaded = <String, Uint8List>{};
-    for (final path in paths) {
-      final bytes = await widget.store.readAsset(path);
-      if (bytes != null) loaded[path] = bytes;
-    }
+    final loaded = await loadNoteImages(widget.store, widget.note);
+    if (loaded.isEmpty) return;
     if (!mounted) return;
     // 先解码，免得 toImage 时图片还没画上去。
     for (final bytes in loaded.values) {
@@ -279,37 +550,13 @@ class _PngDialogState extends State<_PngDialog> {
     });
   }
 
-  int _autoPageCount(double width, double height, int maxPages) {
-    if (height <= 0) return 1;
-    // 接近 3:4 的竖版，朋友圈和小红书都不会把它压成一条。
-    final ideal = math.max(320.0, width * 1.36);
-    return (height / ideal).ceil().clamp(1, maxPages);
-  }
+  int _autoPageCount(double width, double height, int maxPages) =>
+      noteImageAutoPageCount(width, height, maxPages);
 
   /// 自动分页：每个断点尽量靠近等分线，但一定落在段首，
   /// 并且保证首尾两页都有足够的内容。
-  List<double> _autoCuts(int pages, List<double> tops, double height) {
-    if (pages <= 1 || tops.length < 3 || height <= 0) return const [];
-    final candidates = tops.sublist(1);
-    final gap = math.max(60.0, math.min(180.0, height / (pages * 2)));
-    final cuts = <double>[];
-    var previous = tops.first;
-    for (var i = 1; i < pages; i++) {
-      final target = height * i / pages;
-      double? best;
-      for (final y in candidates) {
-        if (y - previous < gap) continue;
-        if (height - y < gap * 0.5) continue;
-        if (best == null || (y - target).abs() < (best - target).abs()) {
-          best = y;
-        }
-      }
-      if (best == null) break;
-      cuts.add(best);
-      previous = best;
-    }
-    return cuts;
-  }
+  List<double> _autoCuts(int pages, List<double> tops, double height) =>
+      noteImageAutoCuts(pages, tops, height);
 
   void _setPages(int next) {
     final maxPages = math.max(1, math.min(_lineTops.length, 20));
@@ -365,17 +612,8 @@ class _PngDialogState extends State<_PngDialog> {
     }
   }
 
-  List<(double, double)> _pageBounds(double height) {
-    final cuts = _cuts.where((y) => y > 4 && y < height - 4).toList()..sort();
-    final bounds = <(double, double)>[];
-    var top = 0.0;
-    for (final cut in cuts) {
-      bounds.add((top, cut));
-      top = cut;
-    }
-    bounds.add((top, height));
-    return bounds;
-  }
+  List<(double, double)> _pageBounds(double height) =>
+      noteImagePageBounds(_cuts, height);
 
   Future<void> _save() async {
     if (_saving) return;
@@ -421,20 +659,8 @@ class _PngDialogState extends State<_PngDialog> {
     }
   }
 
-  Future<ui.Image> _crop(ui.Image source, Rect src) async {
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    canvas.drawImageRect(
-      source,
-      src,
-      Rect.fromLTWH(0, 0, src.width, src.height),
-      Paint()..filterQuality = FilterQuality.none,
-    );
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(src.width.round(), src.height.round());
-    picture.dispose();
-    return image;
-  }
+  Future<ui.Image> _crop(ui.Image source, Rect src) =>
+      noteImageCrop(source, src);
 
   Future<void> _deliver(List<(String, Uint8List)> files) async {
     if (Platform.isAndroid) {

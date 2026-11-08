@@ -142,11 +142,11 @@ Say hi in the comments — I will answer.
 
 Already built in this environment:
 
-- `dist/ThisNote-Setup-2.0.0.exe` (Windows x64 installer, about 24 MB)
-- `dist/ThisNote-Android-2.0.0-arm64.apk` (Android 8.0+ arm64, signed, about 38 MB)
+- `dist/ThisNote-Setup-2.1.0.exe` (Windows x64 installer, about 25 MB)
+- `dist/ThisNote-Android-2.1.0-arm64.apk` (Android 8.0+ arm64, signed, about 40 MB)
 - `dist/SHA256SUMS.txt`
 
-See `dist/安装说明.txt` for installation notes and `dist/release-2.0.0.md` for changes.
+See `dist/安装说明.txt` for installation notes and `dist/release-2.1.0.md` for changes.
 
 ## Tech stack
 
@@ -203,7 +203,7 @@ Installer:
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" ..\installer\ThisNote.iss
-# output: dist/ThisNote-Setup-2.0.0.exe
+# output: dist/ThisNote-Setup-2.1.0.exe
 ```
 
 ### Android

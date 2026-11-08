@@ -701,6 +701,10 @@ class _NoteListPanelState extends State<NoteListPanel> {
                 child: Text(_t(folder.fixed ? '取消固定' : '固定')),
               ),
               PopupMenuItem(value: 'multi', child: Text(_t('多选'))),
+              PopupMenuItem(
+                value: 'export',
+                child: Text(_t('导出为 ZIP')),
+              ),
               const PopupMenuDivider(),
               PopupMenuItem(
                 value: 'new',
@@ -742,6 +746,11 @@ class _NoteListPanelState extends State<NoteListPanel> {
                     onTap: () => Navigator.of(context).pop('multi'),
                   ),
                   _MobileMenuRow(
+                    icon: LucideIcons.folderOutput,
+                    label: _t('导出为 ZIP'),
+                    onTap: () => Navigator.of(context).pop('export'),
+                  ),
+                  _MobileMenuRow(
                     icon: LucideIcons.folderPlus,
                     label: _t('新建子文件夹'),
                     onTap: () => Navigator.of(context).pop('new'),
@@ -771,6 +780,9 @@ class _NoteListPanelState extends State<NoteListPanel> {
         break;
       case 'multi':
         _startSelecting(folderId: folder.id);
+        break;
+      case 'export':
+        await showFolderExport(context, folder);
         break;
       case 'new':
         await _createFolder(folder.id);
@@ -3699,6 +3711,7 @@ const Map<String, String> _en = <String, String>{
   '移到文件夹': 'Move to folder',
   '已移动到文件夹': 'Moved to folder',
   '多选': 'Select',
+  '导出为 ZIP': 'Export as ZIP',
   '全选': 'Select all',
   '取消': 'Cancel',
   '已选 {n} 项': '{n} selected',

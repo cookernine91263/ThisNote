@@ -269,4 +269,61 @@ void main() {
     File('test_out/note_card_formatted.png')
         .writeAsBytesSync(data!.buffer.asUint8List());
   });
+
+  testWidgets('进度页盖住时仍能截出整张长图', (tester) async {
+    final note = Note(
+      id: 'long',
+      title: '一张很长的纸',
+      delta: [
+        for (var i = 1; i <= 12; i++) ...[
+          {'insert': '第 $i 段：把这一页写得足够长，好让截图高度超过一屏。'},
+          {'insert': '\n'},
+        ],
+      ],
+      text: '长文',
+      kind: NoteKind.essay,
+      createdAt: DateTime(2026, 10, 31),
+      updatedAt: DateTime(2026, 10, 31),
+      words: 240,
+      day: '2026-10-31',
+    );
+    final key = GlobalKey();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Stack(
+          children: [
+            Positioned(
+              left: 0,
+              top: 0,
+              width: 520,
+              child: RepaintBoundary(
+                key: key,
+                child: NoteImageCard(
+                  note: note,
+                  theme: NoteImageTheme.paper,
+                  width: 520,
+                ),
+              ),
+            ),
+            const Positioned.fill(
+              child: ColoredBox(color: Color(0xFFFFFFFF)),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final boundary =
+        key.currentContext!.findRenderObject() as RenderRepaintBoundary;
+    final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
+    expect(boundary.size.height, greaterThan(screen.height));
+
+    final image = await tester.runAsync(
+      () => boundary.toImage(pixelRatio: 1),
+    );
+    expect(image, isNotNull);
+    expect(image!.height.toDouble(), closeTo(boundary.size.height, 1));
+    image.dispose();
+  });
 }
